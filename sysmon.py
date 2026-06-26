@@ -16,12 +16,17 @@ Commands (always English):
     help    -> command list
 
 Config via environment:
-    SYSMON_TOPIC   ntfy topic (required)
-    SYSMON_SERVER  ntfy server URL          (default https://ntfy.sh)
-    SYSMON_LANG    response language en|hu   (default en)
+    SYSMON_TOPIC    ntfy topic (required)
+    SYSMON_SERVER   ntfy server URL          (default https://ntfy.sh)
+    SYSMON_LANG     response language en|hu   (default en)
+    SYSMON_INTERVAL watchdog seconds; 0=off   (default 300)
 
 Message priority scales with severity (disk/mem/temp thresholds):
     ok -> default | warn -> high | crit -> urgent
+
+Beyond answering commands, the daemon runs a watchdog: every
+SYSMON_INTERVAL seconds it re-checks status and pushes only when the
+severity level changes (degrade or recover), so you get alerts unasked.
 """
 
 import os
@@ -30,6 +35,7 @@ import json
 import time
 import socket
 import shutil
+import threading
 import subprocess
 import urllib.request
 
@@ -41,6 +47,10 @@ SERVER = os.environ.get("SYSMON_SERVER", "https://ntfy.sh").rstrip("/")
 LANG   = os.environ.get("SYSMON_LANG", "en").lower()
 if LANG not in ("en", "hu"):
     LANG = "en"
+try:
+    INTERVAL = int(os.environ.get("SYSMON_INTERVAL", "300"))   # watchdog period; 0 disables
+except ValueError:
+    INTERVAL = 300
 
 HOSTNAME = socket.gethostname()
 SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
@@ -48,7 +58,13 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help"}
+VERSION = "1.1.0"
+UPDATE_URL = os.environ.get(
+    "SYSMON_UPDATE_URL",
+    "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
+
+COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help",
+            "version", "update"}
 
 # severity thresholds (percent for disk/mem, Celsius for temp)
 TH = {
@@ -62,6 +78,7 @@ SEV_ORDER = ("ok", "warn", "crit")
 # rate limit + dedup
 RATE_MAX, RATE_WINDOW = 8, 60
 _sent_times = []
+_send_lock = threading.Lock()     # daemon publishes from both the listener and watchdog threads
 DEDUP_WINDOW = 4
 _last_cmd = {"text": None, "ts": 0.0}
 
@@ -75,9 +92,17 @@ T = {
         "alive": "{h} is alive. Uptime: {u}",
         "started": "{h} sysmon started.",
         "online": "{h} online",
-        "help": "Commands: status, up, ping, disk, mem, temp, top, help",
+        "help": "Commands: status, up, ping, disk, mem, temp, top, "
+                "version, update, help",
         "top": "Top CPU ({h})",
         "na": "n/a", "sent": "sent", "failed": "failed",
+        "ver": "{h} sysmon v{v}",
+        "up_to_date": "{h} already up to date (v{v}).",
+        "updating": "{h} updating v{cur} -> v{new}, restarting...",
+        "upd_fail": "{h} update failed: {e}",
+        "upd_perm": "{h} cannot write {p} (needs root). Re-run install.sh.",
+        "degraded": "{h} {sev}",
+        "recovered": "{h} recovered",
         "err_topic": "ERROR: set SYSMON_TOPIC (env or top of script).",
         "usage": "Usage: sysmon.py [daemon|status|print]",
     },
@@ -87,9 +112,17 @@ T = {
         "alive": "{h} elek. Uzemido: {u}",
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
-        "help": "Parancsok: status, up, ping, disk, mem, temp, top, help",
+        "help": "Parancsok: status, up, ping, disk, mem, temp, top, "
+                "version, update, help",
         "top": "Top CPU ({h})",
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
+        "ver": "{h} sysmon v{v}",
+        "up_to_date": "{h} mar naprakesz (v{v}).",
+        "updating": "{h} frissites v{cur} -> v{new}, ujraindul...",
+        "upd_fail": "{h} frissites sikertelen: {e}",
+        "upd_perm": "{h} nem irhato {p} (root kell). Futtasd ujra az install.sh-t.",
+        "degraded": "{h} {sev}",
+        "recovered": "{h} helyreallt",
         "err_topic": "HIBA: allitsd be a SYSMON_TOPIC-ot (env vagy a script teteje).",
         "usage": "Hasznalat: sysmon.py [daemon|status|print]",
     },
@@ -99,6 +132,17 @@ def t(key, **kw):
 
 def sev_max(*sevs):
     return max(sevs, key=lambda s: SEV_ORDER.index(s))
+
+# ----------------------------------------------------------------------------
+# ntfy action buttons  (tap in the notification -> POSTs a command to the topic)
+# ----------------------------------------------------------------------------
+def _action(label, command):
+    return f"http, {label}, {PUB_URL}, method=POST, body={command}, clear=true"
+
+def status_actions():
+    # ntfy allows up to 3 action buttons per message
+    return "; ".join(_action(l, c) for l, c in
+                     (("Status", "status"), ("Top", "top"), ("Disk", "disk")))
 
 # ----------------------------------------------------------------------------
 # collectors
@@ -181,13 +225,33 @@ def get_ip():
         return t("na")
 
 # ----------------------------------------------------------------------------
+# reusable checks for extra_tasks()  (each returns a (label, value, severity) tuple)
+# ----------------------------------------------------------------------------
+def check_service(name):
+    ok = subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0
+    return (name, "up" if ok else "DOWN", "ok" if ok else "crit")
+
+def check_docker(name):
+    """Is Docker container <name> running? running=ok, stopped/absent=crit."""
+    try:
+        out = subprocess.check_output(
+            ["docker", "inspect", "-f", "{{.State.Running}}", name],
+            stderr=subprocess.DEVNULL, timeout=5).decode().strip()
+        return (f"docker:{name}", "running" if out == "true" else "stopped",
+                "ok" if out == "true" else "crit")
+    except subprocess.CalledProcessError:
+        return (f"docker:{name}", "absent", "crit")     # no such container
+    except Exception:
+        return (f"docker:{name}", t("na"), "ok")          # docker missing/unreachable
+
+# ----------------------------------------------------------------------------
 # extra task hook
 # ----------------------------------------------------------------------------
 def extra_tasks():
     """Return list of (label, value, severity) tuples. severity: ok|warn|crit."""
     results = []
-    # ok = subprocess.call(["systemctl","is-active","--quiet","nginx"]) == 0
-    # results.append(("nginx", "up" if ok else "DOWN", "ok" if ok else "crit"))
+    # results.append(check_service("nginx"))
+    # results.append(check_docker("homeassistant"))
     return results
 
 def build_status(full=True):
@@ -215,14 +279,15 @@ def build_status(full=True):
 # ----------------------------------------------------------------------------
 # ntfy publish
 # ----------------------------------------------------------------------------
-def publish(message, title=None, tags=None, severity="ok"):
+def publish(message, title=None, tags=None, severity="ok", actions=None):
     now = time.time()
     global _sent_times
-    _sent_times = [x for x in _sent_times if now - x < RATE_WINDOW]
-    if len(_sent_times) >= RATE_MAX:
-        print(f"[rate-limit] dropped ({RATE_MAX}/{RATE_WINDOW}s)", file=sys.stderr)
-        return False
-    _sent_times.append(now)
+    with _send_lock:
+        _sent_times = [x for x in _sent_times if now - x < RATE_WINDOW]
+        if len(_sent_times) >= RATE_MAX:
+            print(f"[rate-limit] dropped ({RATE_MAX}/{RATE_WINDOW}s)", file=sys.stderr)
+            return False
+        _sent_times.append(now)
 
     req = urllib.request.Request(PUB_URL, data=message.encode("utf-8"), method="POST")
     all_tags = SELF_TAG + ("," + tags if tags else "")
@@ -234,12 +299,53 @@ def publish(message, title=None, tags=None, severity="ok"):
     req.add_header("Priority", PRIO.get(severity, "default"))
     if title:
         req.add_header("Title", title)
+    if actions:
+        req.add_header("Actions", actions)
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return r.status == 200
     except Exception as e:
         print(f"[publish error] {e}", file=sys.stderr)
         return False
+
+# ----------------------------------------------------------------------------
+# self-update  (fetch latest sysmon.py, replace this file, re-exec)
+# ----------------------------------------------------------------------------
+def _fetch_remote_script():
+    req = urllib.request.Request(UPDATE_URL)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return r.read().decode("utf-8")
+
+def _parse_version(text):
+    for line in text.splitlines():
+        if line.startswith("VERSION"):
+            return line.split("=", 1)[1].strip().strip('"\'')
+    return None
+
+def do_update():
+    """Download the latest script; if newer, overwrite this file and re-exec."""
+    try:
+        remote = _fetch_remote_script()
+    except Exception as e:
+        publish(t("upd_fail", h=HOSTNAME, e=e), tags="x")
+        return
+    new_ver = _parse_version(remote) or "?"
+    if new_ver == VERSION:
+        publish(t("up_to_date", h=HOSTNAME, v=VERSION), tags="white_check_mark")
+        return
+    path = os.path.abspath(__file__)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(remote)
+    except PermissionError:
+        publish(t("upd_perm", h=HOSTNAME, p=path), tags="lock")
+        return
+    except Exception as e:
+        publish(t("upd_fail", h=HOSTNAME, e=e), tags="x")
+        return
+    publish(t("updating", h=HOSTNAME, cur=VERSION, new=new_ver),
+            title=f"{HOSTNAME} update", tags="arrows_counterclockwise")
+    os.execv(sys.executable, [sys.executable, path] + sys.argv[1:])   # restart with new code
 
 # ----------------------------------------------------------------------------
 # command handling
@@ -255,7 +361,8 @@ def handle_command(cmd):
 
     if cmd == "status":
         msg, sev = build_status(full=True)
-        publish(msg, title=f"{HOSTNAME} status", tags="bar_chart", severity=sev)
+        publish(msg, title=f"{HOSTNAME} status", tags="bar_chart",
+                severity=sev, actions=status_actions())
     elif cmd == "up":
         publish(t("alive", h=HOSTNAME, u=get_uptime()),
                 title=f"{HOSTNAME} up", tags="white_check_mark")
@@ -272,6 +379,10 @@ def handle_command(cmd):
         publish(f"{HOSTNAME} temp: {v}", tags="thermometer", severity=s)
     elif cmd == "top":
         publish(f"{t('top', h=HOSTNAME)}:\n{get_top()}", tags="fire")
+    elif cmd == "version":
+        publish(t("ver", h=HOSTNAME, v=VERSION), tags="label")
+    elif cmd == "update":
+        do_update()
     elif cmd == "help":
         publish(t("help"), title="sysmon help", tags="information_source")
 
@@ -307,6 +418,29 @@ def subscribe_loop():
             backoff = min(backoff * 2, 60)
 
 # ----------------------------------------------------------------------------
+# watchdog: periodic check, push only when the severity level changes
+# ----------------------------------------------------------------------------
+def watchdog_loop():
+    print(f"[sysmon] watchdog: every {INTERVAL}s")
+    last = "ok"                       # startup push already reported the initial state
+    while True:
+        time.sleep(INTERVAL)
+        try:
+            msg, sev = build_status(full=True)
+        except Exception as e:
+            print(f"[watchdog] {e}", file=sys.stderr)
+            continue
+        if sev == last:
+            continue                  # no level change -> stay quiet
+        if sev == "ok":
+            publish(msg, title=t("recovered", h=HOSTNAME),
+                    tags="white_check_mark", severity="ok", actions=status_actions())
+        else:
+            publish(msg, title=t("degraded", h=HOSTNAME, sev=sev.upper()),
+                    tags="warning", severity=sev, actions=status_actions())
+        last = sev
+
+# ----------------------------------------------------------------------------
 # entry point
 # ----------------------------------------------------------------------------
 def main():
@@ -323,7 +457,10 @@ def main():
     elif mode == "daemon":
         msg, sev = build_status(full=True)
         publish(f"{t('started', h=HOSTNAME)}\n{msg}",
-                title=t("online", h=HOSTNAME), tags="rocket", severity=sev)
+                title=t("online", h=HOSTNAME), tags="rocket", severity=sev,
+                actions=status_actions())
+        if INTERVAL > 0:
+            threading.Thread(target=watchdog_loop, daemon=True).start()
         subscribe_loop()
     else:
         print(t("usage")); sys.exit(1)

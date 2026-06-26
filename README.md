@@ -51,9 +51,14 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | `mem`    | memory usage |
 | `temp`   | CPU temperature (Raspberry Pi) |
 | `top`    | top 5 processes by CPU |
+| `version`| running script version |
+| `update` | self-update from the repo, then restart |
 | `help`   | command list |
 
 Commands are **always English**. Unknown command → silently dropped (allowlist).
+
+Status/alert notifications carry **action buttons** (Status · Top · Disk) — tap
+one in the ntfy app to send that command back, no typing.
 
 ---
 
@@ -79,16 +84,26 @@ Thresholds live in the `TH` dict in `sysmon.py`.
 
 ---
 
+## Proactive alerts (watchdog)
+
+The daemon doesn't only answer commands — every `SYSMON_INTERVAL` seconds
+(default 300, `0` disables) it re-checks status and pushes **only when the
+severity level changes**: a `high`/`urgent` alert on degrade, a quiet
+"recovered" when it returns to ok. No spam while everything is fine.
+
+---
+
 ## Extra tasks
 
 Add your own checks in `extra_tasks()` — returns `(label, value, severity)`
 tuples, appended to the `status` report; severity feeds the priority.
+Ready-made helpers `check_service(name)` and `check_docker(name)` are included:
 
 ```python
 def extra_tasks():
     results = []
-    ok = subprocess.call(["systemctl","is-active","--quiet","nginx"]) == 0
-    results.append(("nginx", "up" if ok else "DOWN", "ok" if ok else "crit"))
+    results.append(check_service("nginx"))         # systemd unit up?
+    results.append(check_docker("homeassistant"))  # container running?
     return results
 ```
 

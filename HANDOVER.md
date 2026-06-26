@@ -6,7 +6,7 @@ Remote system monitor: ntfy.sh push + command-response. Python stdlib only.
 - `sysmon.py`       — main script (collectors, ntfy publish/subscribe, command handler)
 - `install.sh`      — one-line bootstrap installer (curl | bash), systemd service
 - `README.md`       — usage docs (EN)
-- `sysmon-doc.html` — standalone one-pager doc (EN/HU toggle), terminal/phosphor theme
+- `onepager/index.html` — standalone one-pager doc (EN/HU toggle), terminal/phosphor theme
 - `LICENSE`         — MIT
 - `.gitignore`
 
@@ -17,6 +17,13 @@ Remote system monitor: ntfy.sh push + command-response. Python stdlib only.
 - Loop prevention: self-tag, allowlist, 4s dedup, 8/60s rate limit
 - One-line installer prompts only for topic + lang (Enter=default), else env-driven
 - All placeholders set to vmynick/rmt_sysmon_ntfy
+- Watchdog (`SYSMON_INTERVAL`, default 300, 0=off): background thread pushes
+  only when severity level changes (degrade/recover) — proactive alerts
+- Action buttons (ntfy `Actions` header) on status/alert pushes: Status/Top/Disk
+- `version` + `update` commands: `update` fetches latest sysmon.py, compares
+  `VERSION`, overwrites `__file__`, re-execs. Installer chowns `$DEST` to the
+  run user so the service can self-overwrite (no root needed for update).
+- `check_service(name)` / `check_docker(name)` helpers for `extra_tasks()`
 
 ## Distribution
 - PUBLIC GitHub repo: https://github.com/vmynick/rmt_sysmon_ntfy (main)

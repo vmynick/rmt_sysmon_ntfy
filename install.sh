@@ -73,6 +73,10 @@ ok "language: ${LANG_SEL}  (commands stay English)"
 SERVER="${SYSMON_SERVER:-https://ntfy.sh}"
 ok "server: ${SERVER}"
 
+# --- watchdog interval (env only, seconds; 0 disables proactive alerts) ---
+INTERVAL_SEL="${SYSMON_INTERVAL:-300}"
+ok "watchdog: every ${INTERVAL_SEL}s"
+
 # --- python3 ---
 if ! command -v python3 >/dev/null 2>&1; then
   say "Installing python3..."
@@ -97,6 +101,9 @@ ok "installed: ${DEST}/sysmon.py"
 # --- run user ---
 RUN_USER="${SUDO_USER:-$(id -un)}"
 
+# let the service user own its script dir so the 'update' command can self-overwrite
+$SUDO chown -R "$RUN_USER" "$DEST" 2>/dev/null || true
+
 # allow vcgencmd temperature reads (Raspberry Pi: /dev/vcio is group 'video')
 if getent group video >/dev/null 2>&1; then
   $SUDO usermod -aG video "$RUN_USER" 2>/dev/null && ok "temp access: ${RUN_USER} added to 'video' group" || true
@@ -115,6 +122,7 @@ User=${RUN_USER}
 Environment=SYSMON_TOPIC=${TOPIC}
 Environment=SYSMON_SERVER=${SERVER}
 Environment=SYSMON_LANG=${LANG_SEL}
+Environment=SYSMON_INTERVAL=${INTERVAL_SEL}
 ExecStart=/usr/bin/python3 ${DEST}/sysmon.py daemon
 Restart=always
 RestartSec=10
