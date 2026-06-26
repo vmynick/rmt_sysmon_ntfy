@@ -64,6 +64,8 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | `mem`    | memory usage |
 | `temp`   | CPU temperature (Raspberry Pi) |
 | `top`    | top 5 processes by CPU |
+| `net`    | per-interface RX/TX totals |
+| `hosts`  | this host's name · ip · version · uptime (roll-call) |
 | `version`| running script version |
 | `checkupdate` | report if a newer version is on GitHub (read-only) |
 | `docs`   | push a message with **Open docs** / **GitHub** buttons |
@@ -135,6 +137,11 @@ The daemon doesn't only answer commands — every `SYSMON_INTERVAL` seconds
 (default 300, `0` disables) it re-checks status and pushes **only when the
 severity level changes**: a `high`/`urgent` alert on degrade, a quiet
 "recovered" when it returns to ok. No spam while everything is fine.
+
+- **Flap protection** — a non-critical change must persist two checks before it
+  alerts (so `warn`↔`ok` flapping stays quiet); `crit` alerts immediately.
+- **Quiet hours** — set `SYSMON_QUIET=22:00-07:00` to hold `warn` alerts during
+  that window (they fire when it ends); `crit` always breaks through.
 
 It also watches GitHub for new releases: a check on start, then every
 `SYSMON_UPDATE_CHECK` seconds (default 86400 = daily, `0` disables). If a
@@ -210,6 +217,7 @@ The installer drops a `sysmon` wrapper in `/usr/local/bin`, so:
 
 ```bash
 sudo sysmon configure                   # ⭐ pick which services/containers to monitor
+sudo sysmon doctor                      # self-test: config, tools, ntfy reachability
 journalctl -u sysmon -f                 # live log
 sudo systemctl restart sysmon           # restart
 sudo systemctl stop sysmon              # stop

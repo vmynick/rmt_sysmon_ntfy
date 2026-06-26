@@ -13,6 +13,8 @@ Commands (always English):
     mem     -> memory usage
     temp    -> CPU temperature (Raspberry Pi)
     top     -> top 5 processes by CPU
+    net     -> per-interface RX/TX totals
+    hosts   -> this host's name/ip/version/uptime (roll-call on a shared topic)
     version     -> running script version
     checkupdate -> report if a newer version is on GitHub (read-only)
     docs        -> push links with "Open docs" / "GitHub" buttons
@@ -28,6 +30,7 @@ Config via environment:
     SYSMON_CHECK_SERVICES  comma-separated systemd units to monitor in `status`
     SYSMON_CHECK_DOCKER    comma-separated docker containers to monitor in `status`
     SYSMON_CHECK_PVE       comma-separated Proxmox VM/CT names or VMIDs to monitor
+    SYSMON_QUIET           quiet-hours window e.g. 22:00-07:00 (hold non-crit alerts)
 
 Address one host when several share a topic: prefix the command with the
 hostname (the @ is optional), e.g. "pve up" or "@pi4 status" (no prefix =
@@ -74,13 +77,24 @@ CHECK_SERVICES = [s.strip() for s in os.environ.get("SYSMON_CHECK_SERVICES", "")
 CHECK_DOCKER   = [s.strip() for s in os.environ.get("SYSMON_CHECK_DOCKER",   "").split(",") if s.strip()]
 CHECK_PVE      = [s.strip() for s in os.environ.get("SYSMON_CHECK_PVE",       "").split(",") if s.strip()]
 
+# quiet hours: hold non-critical watchdog alerts in this local-time window, e.g. "22:00-07:00"
+def _hhmm(x):
+    h, m = x.split(":"); return int(h) * 60 + int(m)
+try:
+    _q = os.environ.get("SYSMON_QUIET", "").strip()
+    QUIET = tuple(_hhmm(p) for p in _q.split("-")) if _q else None
+    if QUIET and len(QUIET) != 2:
+        QUIET = None
+except Exception:
+    QUIET = None
+
 HOSTNAME = socket.gethostname()
 SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.9.2"
+VERSION = "1.10.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -88,8 +102,8 @@ DOCS_URL = "https://vmynick.github.io/rmt_sysmon_ntfy/"
 REPO_URL = "https://github.com/vmynick/rmt_sysmon_ntfy"
 UNIT_PATH = os.environ.get("SYSMON_UNIT", "/etc/systemd/system/sysmon.service")
 
-COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help",
-            "version", "checkupdate", "docs",
+COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "net",
+            "hosts", "help", "version", "checkupdate", "docs",
             "dismiss", "remind6h", "remind2d"}     # update-notice buttons
 
 # severity thresholds (percent for disk/mem, Celsius for temp)
@@ -119,8 +133,8 @@ T = {
         "alive": "{h} is alive. Uptime: {u}",
         "started": "{h} sysmon started.",
         "online": "{h} online",
-        "help": "Commands: status, up, ping, disk, mem, temp, top, "
-                "version, checkupdate, docs, help",
+        "help": "Commands: status, up, ping, disk, mem, temp, top, net, "
+                "hosts, version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon docs & links — tap a button below.",
         "na": "n/a", "sent": "sent", "failed": "failed",
@@ -135,7 +149,7 @@ T = {
         "degraded": "{h} {sev}",
         "recovered": "{h} recovered",
         "err_topic": "ERROR: set SYSMON_TOPIC (env or top of script).",
-        "usage": "Usage: sysmon.py [daemon|status|print|configure]",
+        "usage": "Usage: sysmon.py [daemon|status|print|configure|doctor]",
     },
     "hu": {
         "host": "Gep", "up": "Fut", "load": "Terheles", "mem": "Memoria",
@@ -143,8 +157,8 @@ T = {
         "alive": "{h} elek. Uzemido: {u}",
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
-        "help": "Parancsok: status, up, ping, disk, mem, temp, top, "
-                "version, checkupdate, docs, help",
+        "help": "Parancsok: status, up, ping, disk, mem, temp, top, net, "
+                "hosts, version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon dokumentacio es linkek — koppints egy gombra lent.",
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
@@ -159,7 +173,7 @@ T = {
         "degraded": "{h} {sev}",
         "recovered": "{h} helyreallt",
         "err_topic": "HIBA: allitsd be a SYSMON_TOPIC-ot (env vagy a script teteje).",
-        "usage": "Hasznalat: sysmon.py [daemon|status|print|configure]",
+        "usage": "Hasznalat: sysmon.py [daemon|status|print|configure|doctor]",
     },
 }
 def t(key, **kw):
@@ -259,6 +273,30 @@ def get_ip():
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]; s.close()
         return ip
+    except Exception:
+        return t("na")
+
+def _hsize(n):
+    for unit in ("B", "K", "M", "G", "T"):
+        if n < 1024:
+            return f"{n:.0f}{unit}"
+        n /= 1024
+    return f"{n:.0f}P"
+
+def get_net():
+    """Per-interface cumulative RX/TX from /proc/net/dev (skip lo and idle ifaces)."""
+    try:
+        out = []
+        for line in open("/proc/net/dev").read().splitlines()[2:]:
+            name, _, data = line.partition(":")
+            name = name.strip()
+            f = data.split()
+            if name == "lo" or len(f) < 9:
+                continue
+            rx, tx = int(f[0]), int(f[8])
+            if rx or tx:
+                out.append(f"  {name}: ↓{_hsize(rx)} ↑{_hsize(tx)}")
+        return "\n".join(out) if out else t("na")
     except Exception:
         return t("na")
 
@@ -593,6 +631,11 @@ def handle_command(raw):
         publish(f"{HOSTNAME} temp: {v}", tags="thermometer", severity=s)
     elif cmd == "top":
         publish(f"{t('top', h=HOSTNAME)}:\n{get_top()}", tags="fire")
+    elif cmd == "net":
+        publish(f"{HOSTNAME} net:\n{get_net()}", tags="satellite")
+    elif cmd == "hosts":
+        publish(f"{HOSTNAME} · {get_ip()} · v{VERSION} · up {get_uptime()}",
+                title=HOSTNAME, tags="busts_in_silhouette")
     elif cmd == "version":
         publish(t("ver", h=HOSTNAME, v=VERSION), tags="label")
     elif cmd == "checkupdate":
@@ -644,9 +687,21 @@ def subscribe_loop():
 # ----------------------------------------------------------------------------
 # watchdog: periodic check, push only when the severity level changes
 # ----------------------------------------------------------------------------
+def _in_quiet():
+    """True if now is inside SYSMON_QUIET (handles windows crossing midnight)."""
+    if not QUIET:
+        return False
+    lt = time.localtime()
+    cur, (a, b) = lt.tm_hour * 60 + lt.tm_min, QUIET
+    return a <= cur < b if a <= b else (cur >= a or cur < b)
+
+FLAP_STREAK = 2                       # a non-crit change must hold this many checks
+
 def watchdog_loop():
-    print(f"[sysmon] watchdog: every {INTERVAL}s")
-    last = "ok"                       # startup push already reported the initial state
+    print(f"[sysmon] watchdog: every {INTERVAL}s"
+          + (f", quiet {QUIET[0]//60:02d}:{QUIET[0]%60:02d}-{QUIET[1]//60:02d}:{QUIET[1]%60:02d}"
+             if QUIET else ""))
+    last, pending, streak = "ok", "ok", 0   # startup push already reported initial state
     while True:
         time.sleep(INTERVAL)
         try:
@@ -655,14 +710,26 @@ def watchdog_loop():
             print(f"[watchdog] {e}", file=sys.stderr)
             continue
         if sev == last:
-            continue                  # no level change -> stay quiet
+            pending, streak = sev, 0
+            continue
+        # flap protection: crit alerts at once, others must persist FLAP_STREAK checks
+        if sev == "crit":
+            pass
+        else:
+            streak = streak + 1 if sev == pending else 1
+            pending = sev
+            if streak < FLAP_STREAK:
+                continue
+        # quiet hours: hold warn (don't commit, so it alerts once the window ends)
+        if sev == "warn" and _in_quiet():
+            continue
         if sev == "ok":
             publish(msg, title=t("recovered", h=HOSTNAME),
                     tags="white_check_mark", severity="ok", actions=status_actions())
         else:
             publish(msg, title=t("degraded", h=HOSTNAME, sev=sev.upper()),
                     tags="warning", severity=sev, actions=status_actions())
-        last = sev
+        last, pending, streak = sev, sev, 0
 
 # ----------------------------------------------------------------------------
 # configure wizard  (edit the extra-checks lists in the systemd unit)
@@ -791,12 +858,43 @@ def configure_wizard():
         sys.exit(1)
 
 # ----------------------------------------------------------------------------
+# doctor  (self-test: config, tools, ntfy reachability, sample report)
+# ----------------------------------------------------------------------------
+def doctor():
+    print(f"sysmon v{VERSION}  ·  python {sys.version.split()[0]}  ·  host {HOSTNAME}")
+    server = SERVER
+    if os.path.exists(UNIT_PATH):
+        print("\nunit config:")
+        for k in ("SYSMON_TOPIC", "SYSMON_SERVER", "SYSMON_LANG", "SYSMON_INTERVAL",
+                  "SYSMON_UPDATE_CHECK", "SYSMON_QUIET", "SYSMON_CHECK_SERVICES",
+                  "SYSMON_CHECK_DOCKER", "SYSMON_CHECK_PVE"):
+            print(f"  {k}={_unit_get_env(UNIT_PATH, k)}")
+        server = _unit_get_env(UNIT_PATH, "SYSMON_SERVER") or SERVER
+    print("\ntools:")
+    for tool in ("systemctl", "docker", "qm", "pct", "vcgencmd", "sensors",
+                 "pveversion", "journalctl"):
+        print(f"  {tool:11} {'yes' if shutil.which(tool) else 'no'}")
+    print(f"\nntfy {server}: ", end="", flush=True)
+    try:
+        r = urllib.request.urlopen(f"{server}/v1/health", timeout=5)
+        print("reachable" if r.status == 200 else f"HTTP {r.status}")
+    except Exception as e:
+        print(f"FAIL ({e})")
+    if os.path.exists(UNIT_PATH):
+        rc = subprocess.call(["systemctl", "is-active", "--quiet", "sysmon.service"])
+        print(f"service:     {'active' if rc == 0 else 'NOT active'}")
+    print("\nsample status report:")
+    print(build_status(full=True)[0])
+
+# ----------------------------------------------------------------------------
 # entry point
 # ----------------------------------------------------------------------------
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else "daemon"
     if mode in ("configure", "wizard"):
         configure_wizard(); return
+    if mode == "doctor":
+        doctor(); return
     if TOPIC.endswith("CHANGE_ME"):
         print(t("err_topic"), file=sys.stderr)
         sys.exit(1)
