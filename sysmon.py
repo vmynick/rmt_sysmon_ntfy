@@ -73,7 +73,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.8.1"
+VERSION = "1.8.2"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -303,7 +303,7 @@ def extra_tasks():
 
 def _metric(emoji, label, value, sev):
     # trailing status dot only when the metric actually has a severity reading
-    dot = "" if value == t("na") else f"  {SEV_ICON[sev]}"
+    dot = "" if value == t("na") else f"  {SEV_ICON.get(sev, '⚪')}"
     return f"{emoji} {label:<5} {value}{dot}"
 
 def build_status(full=True):
@@ -327,6 +327,7 @@ def build_status(full=True):
         if extras:
             lines.append(f"\n{t('extra')}")
             for k, v, s in extras:
+                s = str(s).strip().lower() or "ok"     # tolerate stray space / case
                 lines.append(f"  {SEV_ICON.get(s, '⚪')}  {k}: {v}")
                 sev = sev_max(sev, s if s in SEV_ORDER else "warn")
     return "\n".join(lines), sev
