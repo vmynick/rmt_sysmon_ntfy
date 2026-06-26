@@ -6,7 +6,7 @@ Remote system monitor: ntfy.sh push + command-response. Python stdlib only.
 - `sysmon.py`       — main script (collectors, ntfy publish/subscribe, command handler)
 - `install.sh`      — one-line bootstrap installer (curl | bash), systemd service
 - `README.md`       — usage docs (EN)
-- `onepager/index.html` — standalone one-pager doc (EN/HU toggle), terminal/phosphor theme
+- `docs/index.html` — standalone one-pager doc (EN/HU toggle), terminal/phosphor theme
 - `LICENSE`         — MIT
 - `.gitignore`
 
