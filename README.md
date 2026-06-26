@@ -32,9 +32,13 @@ anyone with the topic run code on the box).
 Fully unattended (e.g. many machines):
 
 ```bash
-SYSMON_TOPIC=sysmon-aa0ca9c635659f04 SYSMON_LANG=hu \
-  curl -fsSL https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/install.sh \
+  | SYSMON_TOPIC=sysmon-aa0ca9c635659f04 SYSMON_LANG=hu bash
 ```
+
+> Put the env vars on the **`bash`** side of the pipe (as above). In
+> `VAR=x curl … | bash` the `VAR` applies only to `curl`, so the script
+> wouldn't see it.
 
 > The topic name **is the password** — keep it private.
 > Self-hosted ntfy: `SYSMON_SERVER=https://ntfy.example.com`.
@@ -116,25 +120,34 @@ the installer one-liner — sysmon never self-updates from a command.
 
 ## Extra tasks
 
-The installer ends with a small **wizard**: it lists the running docker
-containers and systemd services on the machine and lets you pick which to
-monitor (by number or name, `*` for all). The choices are stored as
-`SYSMON_CHECK_SERVICES` / `SYSMON_CHECK_DOCKER` in the service, and
-`extra_tasks()` checks them on every `status` — a stopped one raises the
-alert priority.
+### 🧩 `sudo sysmon configure` — the easy way
 
-**Edit them any time** with the same wizard:
+The one command to manage what gets monitored. Run it any time:
 
 ```bash
 sudo sysmon configure
 ```
 
-It shows your current picks, lists what's running, you re-select, and it
-writes the service + restarts it. (Manual alternative: edit the two
-`Environment=SYSMON_CHECK_*` lines in `/etc/systemd/system/sysmon.service`,
+It will:
+
+- **list every running docker container and systemd service** on the machine,
+- mark your current picks, and let you **re-select** (by number or name,
+  `*` = all, `-` = none, Enter = keep),
+- **save** the choices into the service and **restart** it for you.
+
+No file editing, no remembering env-var names. The same wizard also runs at the
+end of the installer the first time.
+
+Behind the scenes the picks are stored as `SYSMON_CHECK_SERVICES` /
+`SYSMON_CHECK_DOCKER` in the systemd unit, and `extra_tasks()` checks them on
+every `status` — a stopped one raises the alert priority. (Manual alternative:
+edit those two `Environment=` lines in `/etc/systemd/system/sysmon.service`,
 then `daemon-reload` + `restart`.)
 
-You can also edit `extra_tasks()` directly for custom checks. It returns
+### Custom checks in code
+
+You can also edit `extra_tasks()` directly for anything beyond
+services/containers. It returns
 `(label, value, severity)` tuples; helpers `check_service(name)` and
 `check_docker(name)` are included:
 
@@ -153,7 +166,7 @@ def extra_tasks():
 The script reads and writes the same topic, so:
 1. **self-tag** — every push carries `sysmon-<host>`; incoming events with
    that tag are skipped → never answers itself.
-2. **allowlist** — only the 8 known commands run; everything else dropped.
+2. **allowlist** — only the known commands run; everything else dropped.
 3. **dedup** — same command at most once per 4 s.
 4. **rate limit** — max 8 outgoing replies / 60 s.
 
@@ -161,20 +174,25 @@ The script reads and writes the same topic, so:
 
 ## Operate
 
+The installer drops a `sysmon` wrapper in `/usr/local/bin`, so:
+
 ```bash
+sudo sysmon configure                   # ⭐ pick which services/containers to monitor
 journalctl -u sysmon -f                 # live log
 sudo systemctl restart sysmon           # restart
 sudo systemctl stop sysmon              # stop
 sudo systemctl disable --now sysmon \
-  && sudo rm /etc/systemd/system/sysmon.service /opt/sysmon/sysmon.py   # remove
+  && sudo rm /etc/systemd/system/sysmon.service \
+            /opt/sysmon/sysmon.py /usr/local/bin/sysmon   # remove
 ```
 
-Manual run without the service:
+Manual run without the service (`sysmon` = `python3 /opt/sysmon/sysmon.py`):
 
 ```bash
 SYSMON_TOPIC=sysmon-... SYSMON_LANG=hu python3 sysmon.py daemon   # listen
 SYSMON_TOPIC=sysmon-... python3 sysmon.py status                  # one push
 python3 sysmon.py print                                           # just print
+sudo python3 sysmon.py configure                                  # edit checks
 ```
 
 ---

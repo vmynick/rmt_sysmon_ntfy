@@ -204,8 +204,10 @@ extra
       <div class="cmd" style="margin-top:0">curl -fsSL https://raw.githubusercontent.com/<span class="v">vmynick/rmt_sysmon_ntfy</span>/main/install.sh | bash</div>
       <p class="note l-en" style="margin-bottom:14px">Fully unattended (e.g. many machines, from a script):</p>
       <p class="note l-hu" style="margin-bottom:14px">Teljesen kérdés nélkül (pl. több gépre, scriptből):</p>
-      <div class="cmd" style="margin:0"><span class="v">SYSMON_TOPIC</span>=sysmon-aa0ca9c635659f04 <span class="v">SYSMON_LANG</span>=hu \
-  curl -fsSL https://raw.githubusercontent.com/<span class="v">vmynick/rmt_sysmon_ntfy</span>/main/install.sh | bash</div>
+      <div class="cmd" style="margin:0">curl -fsSL https://raw.githubusercontent.com/<span class="v">vmynick/rmt_sysmon_ntfy</span>/main/install.sh \
+  | <span class="v">SYSMON_TOPIC</span>=sysmon-aa0ca9c635659f04 <span class="v">SYSMON_LANG</span>=hu bash</div>
+      <p class="note l-en" style="margin-bottom:0">Env vars go on the <b>bash</b> side of the pipe — in <code>VAR=x curl … | bash</code> the var reaches only <code>curl</code>, not the script.</p>
+      <p class="note l-hu" style="margin-bottom:0">A változók a <b>bash</b> oldalára kerüljenek — a <code>VAR=x curl … | bash</code> formában a változót csak a <code>curl</code> kapja, a szkript nem.</p>
       <p class="note l-en" style="margin-bottom:0">Re-run on an existing install and it asks: <b>update</b> (keep your topic / language / server / interval, just refresh the script) or <b>clean install</b>.</p>
       <p class="note l-hu" style="margin-bottom:0">Meglévő telepítésen újrafuttatva megkérdezi: <b>frissítés</b> (megtartja a topicot / nyelvet / szervert / intervallumot, csak a szkriptet újítja) vagy <b>tiszta telepítés</b>.</p>
     </div>
@@ -306,10 +308,12 @@ curl -H <span class="v">"Actions: http, Top, https://ntfy.sh/mytopic, method=POS
     <p class="eyebrow l-en">Extra tasks <span>your own checks</span></p>
     <p class="eyebrow l-hu">Extra taskok <span>saját ellenőrzések</span></p>
     <div class="card">
+      <div class="cmd" style="margin:0 0 12px"><span class="c"><span class="l-en"># ⭐ the easy way — interactive picker, anytime</span><span class="l-hu"># ⭐ az egyszerű út — interaktív választó, bármikor</span></span>
+sudo sysmon configure</div>
       <p class="l-en" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
-        The installer ends with a <b>wizard</b> that lists your running docker containers and systemd services and lets you pick which to monitor (number/name, <code>*</code> = all). Edit them any time with <code>sudo sysmon configure</code> — it re-lists, you re-pick, and it updates + restarts the service. Picks live in <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> and run on every <code>status</code>. You can also edit <code>extra_tasks()</code> directly — helpers <code>check_service()</code> / <code>check_docker()</code> are included.</p>
+        <b><code>sudo sysmon configure</code></b> lists every running docker container and systemd service, marks your current picks, and lets you re-select (number/name, <code>*</code> = all, <code>-</code> = none). It then <b>saves and restarts</b> the service — no file editing. The same wizard runs at the end of the installer. Picks live in <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> and run on every <code>status</code>. For custom logic you can still edit <code>extra_tasks()</code> directly (helpers <code>check_service()</code> / <code>check_docker()</code>).</p>
       <p class="l-hu" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
-        A telepítő végén egy <b>varázsló</b> listázza a futó docker konténereket és systemd service-eket, és kiválaszthatod, melyiket figyelje (szám/név, <code>*</code> = mind). Bármikor szerkeszd a <code>sudo sysmon configure</code> paranccsal — újra listáz, újraválasztasz, és frissíti + újraindítja a service-t. A választás a <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> változókban van, és minden <code>status</code>-nál fut. Az <code>extra_tasks()</code> közvetlenül is szerkeszthető — segédek: <code>check_service()</code> / <code>check_docker()</code>.</p>
+        A <b><code>sudo sysmon configure</code></b> listázza az összes futó docker konténert és systemd service-t, megjelöli a jelenlegi választást, és újraválaszthatsz (szám/név, <code>*</code> = mind, <code>-</code> = egyik se). Aztán <b>elmenti és újraindítja</b> a service-t — fájl szerkesztése nélkül. Ugyanez a varázsló fut a telepítő végén is. A választás a <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> változókban van, és minden <code>status</code>-nál fut. Egyedi logikához az <code>extra_tasks()</code> közvetlenül is szerkeszthető (segédek: <code>check_service()</code> / <code>check_docker()</code>).</p>
       <div class="cmd"><span class="c"># sysmon.py</span>
 def extra_tasks():
     results = []
@@ -364,7 +368,7 @@ def extra_tasks():
     <p class="eyebrow l-hu">Loop-prevenció <span>ír és olvas ugyanarra a topicra</span></p>
     <div class="layers">
       <div class="layer"><span class="n">1</span><span><span class="t">self-tag</span> <span class="d"><span class="l-en">— every push it sends carries a <code>sysmon-&lt;host&gt;</code> tag; incoming events with that tag are skipped → it never answers itself.</span><span class="l-hu">— minden saját push <code>sysmon-&lt;host&gt;</code> címkét kap; a beérkező eseményeket e címke alapján kihagyja → nem válaszol önmagának.</span></span></span></div>
-      <div class="layer"><span class="n">2</span><span><span class="t">allowlist</span> <span class="d"><span class="l-en">— only the 8 known commands run, everything else is dropped.</span><span class="l-hu">— csak a 8 ismert parancs fut le, minden más eldobva.</span></span></span></div>
+      <div class="layer"><span class="n">2</span><span><span class="t">allowlist</span> <span class="d"><span class="l-en">— only the known commands run, everything else is dropped.</span><span class="l-hu">— csak az ismert parancsok futnak, minden más eldobva.</span></span></span></div>
       <div class="layer"><span class="n">3</span><span><span class="t">dedup</span> <span class="d"><span class="l-en">— the same command at most once per 4 s.</span><span class="l-hu">— ugyanaz a parancs 4 mp-en belül egyszer.</span></span></span></div>
       <div class="layer"><span class="n">4</span><span><span class="t">rate limit</span> <span class="d"><span class="l-en">— max 8 outgoing replies / 60 s.</span><span class="l-hu">— max 8 kimenő válasz / 60 mp.</span></span></span></div>
     </div>
@@ -377,7 +381,10 @@ def extra_tasks():
     <div class="grid2">
       <div class="card">
         <p style="margin:0 0 8px;color:var(--ink-dim);font-size:12px;letter-spacing:.1em">SERVICE</p>
-        <div class="cmd" style="margin:0"><span class="c"><span class="l-en"># live log</span><span class="l-hu"># napló élőben</span></span>
+        <div class="cmd" style="margin:0"><span class="c"><span class="l-en"># ⭐ edit monitored services/containers</span><span class="l-hu"># ⭐ figyelt service-ek/konténerek szerkesztése</span></span>
+sudo sysmon configure
+
+<span class="c"><span class="l-en"># live log</span><span class="l-hu"># napló élőben</span></span>
 journalctl -u sysmon -f
 
 <span class="c"><span class="l-en"># restart / stop</span><span class="l-hu"># újraindít / leállít</span></span>
@@ -393,7 +400,8 @@ python3 sysmon.py status   <span class="c"><span class="l-en"># 1 push</span><sp
 python3 sysmon.py print    <span class="c"><span class="l-en"># just print</span><span class="l-hu"># csak kiír</span></span>
 
 <span class="c"><span class="l-en"># remove</span><span class="l-hu"># eltávolítás</span></span>
-sudo systemctl disable --now sysmon</div>
+sudo systemctl disable --now sysmon
+sudo rm /usr/local/bin/sysmon</div>
       </div>
     </div>
   </section>

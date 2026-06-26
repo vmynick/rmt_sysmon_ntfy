@@ -263,7 +263,7 @@ def check_service(name):
         ok = subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0
     except Exception:
         return (name, t("na"), "ok")              # no systemctl / not systemd
-    return (name, "up" if ok else "DOWN", "ok" if ok else "crit")
+    return (name, " up" if ok else " DOWN", " ok" if ok else " crit")
 
 def check_docker(name):
     """Is Docker container <name> running? running=ok, stopped/absent=crit."""
