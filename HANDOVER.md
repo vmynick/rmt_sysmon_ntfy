@@ -23,7 +23,10 @@ Remote system monitor: ntfy.sh push + command-response. Python stdlib only.
 - `version` + `update` commands: `update` fetches latest sysmon.py, compares
   `VERSION`, overwrites `__file__`, re-execs. Installer chowns `$DEST` to the
   run user so the service can self-overwrite (no root needed for update).
+- `docs` command: pushes a message with two `view` buttons — Open docs
+  (`DOCS_URL`, GitHub Pages one-pager) and GitHub (`REPO_URL`).
 - `check_service(name)` / `check_docker(name)` helpers for `extra_tasks()`
+- Current `VERSION` = 1.2.0
 
 ## Distribution
 - PUBLIC GitHub repo: https://github.com/vmynick/rmt_sysmon_ntfy (main)
