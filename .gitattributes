@@ -1,0 +1,3 @@
+# Keep executable scripts LF so they run on Linux regardless of checkout OS
+*.sh   text eol=lf
+*.py   text eol=lf
