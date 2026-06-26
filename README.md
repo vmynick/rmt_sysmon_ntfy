@@ -7,6 +7,8 @@ simple commands from anyone who knows the topic.
 The command is a shareable one-liner. EN/HU response language. Message
 priority scales with severity.
 
+📄 **[One-pager / docs →](https://vmynick.github.io/rmt_sysmon_ntfy/)** (EN/HU)
+
 ---
 
 ## Install — one command
