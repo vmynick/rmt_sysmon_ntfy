@@ -27,6 +27,11 @@ Config via environment:
     SYSMON_UPDATE_CHECK version-check seconds; 0=off (default 86400)
     SYSMON_CHECK_SERVICES  comma-separated systemd units to monitor in `status`
     SYSMON_CHECK_DOCKER    comma-separated docker containers to monitor in `status`
+    SYSMON_CHECK_PVE       comma-separated Proxmox VM/CT names or VMIDs to monitor
+
+Address one host when several share a topic: prefix any command with @<host>,
+e.g. "@pi4 status" (no prefix = every host answers). On a Proxmox node the
+report shows the PVE version; pick the HAOS VM via SYSMON_CHECK_PVE.
 
 Message priority scales with severity (disk/mem/temp thresholds):
     ok -> default | warn -> high | crit -> urgent
@@ -66,6 +71,7 @@ except ValueError:
 # extra checks selected by the installer wizard (comma-separated names)
 CHECK_SERVICES = [s.strip() for s in os.environ.get("SYSMON_CHECK_SERVICES", "").split(",") if s.strip()]
 CHECK_DOCKER   = [s.strip() for s in os.environ.get("SYSMON_CHECK_DOCKER",   "").split(",") if s.strip()]
+CHECK_PVE      = [s.strip() for s in os.environ.get("SYSMON_CHECK_PVE",       "").split(",") if s.strip()]
 
 HOSTNAME = socket.gethostname()
 SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
@@ -73,7 +79,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.8.2"
+VERSION = "1.9.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -278,6 +284,46 @@ def check_docker(name):
     except Exception:
         return (f"docker · {name}  ", t("na"), "ok")          # docker missing/unreachable
 
+def get_pve():
+    """Proxmox VE version (e.g. '8.1.4') if this is a PVE node, else None."""
+    try:
+        out = subprocess.check_output(["pveversion"], stderr=subprocess.DEVNULL,
+                                      timeout=3).decode().strip()
+        parts = out.split("/")                 # pve-manager/8.1.4/<git>
+        return parts[1] if len(parts) > 1 else out
+    except Exception:
+        return None
+
+def _pve_guests():
+    """List Proxmox guests as (vmid, name, status, kind) — VMs (qm) + CTs (pct)."""
+    guests = []
+    for cmd, kind in ((["qm", "list"], "vm"), (["pct", "list"], "ct")):
+        try:
+            rows = subprocess.check_output(cmd, stderr=subprocess.DEVNULL,
+                                           timeout=5).decode().splitlines()[1:]
+        except Exception:
+            continue
+        for row in rows:
+            f = row.split()
+            if len(f) < 3:
+                continue
+            if kind == "vm":                   # VMID NAME STATUS ...
+                guests.append((f[0], f[1], f[2], "vm"))
+            else:                              # VMID STATUS [LOCK] NAME
+                guests.append((f[0], f[-1], f[1], "ct"))
+    return guests
+
+def _match_guest(name, guests):
+    name = str(name)
+    for vmid, gname, status, kind in guests:
+        if name == vmid or name.lower() == gname.lower():
+            return (f"{kind} · {gname}", status, "ok" if status == "running" else "crit")
+    return (f"pve · {name}", t("na"), "ok")    # not found / not a PVE host
+
+def check_pve_guest(name):
+    """Check a Proxmox VM/CT by name or VMID (e.g. the HAOS VM). running=ok else crit."""
+    return _match_guest(name, _pve_guests())
+
 # ----------------------------------------------------------------------------
 # extra task hook
 # ----------------------------------------------------------------------------
@@ -289,15 +335,19 @@ def extra_tasks():
     """
     results = []
 
-    # selected by the installer wizard (SYSMON_CHECK_SERVICES / SYSMON_CHECK_DOCKER)
+    # selected by the installer wizard (SYSMON_CHECK_SERVICES / _DOCKER / _PVE)
     for name in CHECK_SERVICES:
         results.append(check_service(name))   # up=ok, down=crit
     for name in CHECK_DOCKER:
         results.append(check_docker(name))    # running=ok, stopped/absent=crit
+    if CHECK_PVE:
+        guests = _pve_guests()                # fetch once, match all (e.g. the HAOS VM)
+        for name in CHECK_PVE:
+            results.append(_match_guest(name, guests))
 
     # --- add your own checks here too, e.g. ---
     # results.append(check_service("nginx"))
-    # results.append(check_docker("node-red"))
+    # results.append(check_pve_guest("haos"))
 
     return results
 
@@ -310,8 +360,11 @@ def build_status(full=True):
     mem, sm = get_mem()
     disk, sd = get_disk()
     temp, st = get_temp()
-    lines = [
-        f"🖥️  {HOSTNAME}  ·  {get_ip()}",
+    lines = [f"🖥️  {HOSTNAME}  ·  {get_ip()}"]
+    pve = get_pve()
+    if pve:
+        lines.append(f"🅿️  PVE   {pve}")          # Proxmox node
+    lines += [
         f"⏱️  {t('up'):<5} {get_uptime()}",
         f"📈  {t('load'):<5} {get_load()}",
         _metric("🧠", t("mem"),  mem,  sm),
@@ -483,8 +536,26 @@ def dismiss_update():
 # ----------------------------------------------------------------------------
 # command handling
 # ----------------------------------------------------------------------------
-def handle_command(cmd):
-    cmd = cmd.strip().lower()
+def _parse_command(raw):
+    """Split into (command, target_host). Supports '@host cmd', 'cmd @host', 'cmd@host'.
+    target is None when not addressed (then every host on the topic answers)."""
+    target, words = None, []
+    for w in str(raw).strip().lower().split():
+        if w.startswith("@"):
+            target = w[1:]
+        elif "@" in w:
+            c, _, h = w.partition("@"); words.append(c); target = h
+        else:
+            words.append(w)
+    return (words[0] if words else "", target)
+
+def _for_me(target):
+    return target in (None, "", "all", HOSTNAME.lower(), HOSTNAME.split(".")[0].lower())
+
+def handle_command(raw):
+    cmd, target = _parse_command(raw)
+    if not _for_me(target):
+        return                       # addressed to a different host on the same topic
     if cmd not in COMMANDS:
         return
     now = time.time()
@@ -587,12 +658,14 @@ def watchdog_loop():
 # configure wizard  (edit the extra-checks lists in the systemd unit)
 # ----------------------------------------------------------------------------
 def _list_running(kind):
-    """Return running docker container names or systemd service names."""
+    """Return docker container names, Proxmox guest names, or systemd service names."""
     try:
         if kind == "docker":
             out = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"],
                                           stderr=subprocess.DEVNULL, timeout=5)
             return [l.strip() for l in out.decode().splitlines() if l.strip()]
+        if kind == "pve":
+            return [g[1] for g in _pve_guests()]          # VM/CT names
         out = subprocess.check_output(
             ["systemctl", "list-units", "--type=service", "--state=running",
              "--no-legend", "--plain"], stderr=subprocess.DEVNULL, timeout=5)
@@ -676,19 +749,27 @@ def configure_wizard():
 
     cur_svc = [s for s in _unit_get_env(UNIT_PATH, "SYSMON_CHECK_SERVICES").split(",") if s]
     cur_dkr = [s for s in _unit_get_env(UNIT_PATH, "SYSMON_CHECK_DOCKER").split(",") if s]
+    cur_pve = [s for s in _unit_get_env(UNIT_PATH, "SYSMON_CHECK_PVE").split(",") if s]
     print("sysmon — configure extra checks (added to the 'status' report)")
     print(f"  current services:   {', '.join(cur_svc) or '(none)'}")
     print(f"  current containers: {', '.join(cur_dkr) or '(none)'}")
+    pve_avail = bool(get_pve())
+    if pve_avail or cur_pve:
+        print(f"  current PVE guests: {', '.join(cur_pve) or '(none)'}")
 
     dkr = _pick("docker container", _list_running("docker"), cur_dkr)
+    pve = _pick("PVE guest (VM/CT)", _list_running("pve"), cur_pve) if (pve_avail or cur_pve) else cur_pve
     svc = _pick("service", _list_running("service"), cur_svc)
 
     print(f"\nNew services:   {', '.join(svc) or '(none)'}")
     print(f"New containers: {', '.join(dkr) or '(none)'}")
+    if pve_avail or cur_pve:
+        print(f"New PVE guests: {', '.join(pve) or '(none)'}")
     if input("Save and restart sysmon? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
         print("cancelled."); return
     _unit_set_env(UNIT_PATH, {"SYSMON_CHECK_SERVICES": ",".join(svc),
-                              "SYSMON_CHECK_DOCKER": ",".join(dkr)})
+                              "SYSMON_CHECK_DOCKER": ",".join(dkr),
+                              "SYSMON_CHECK_PVE": ",".join(pve)})
     subprocess.call(["systemctl", "daemon-reload"])
     subprocess.call(["systemctl", "restart", "sysmon.service"])
     if subprocess.call(["systemctl", "is-active", "--quiet", "sysmon.service"]) == 0:

@@ -76,6 +76,35 @@ one in the ntfy app to send that command back, no typing.
 
 ---
 
+## Multiple servers on one topic
+
+Install sysmon on several machines with the **same topic** and they all listen.
+By default every host answers a command (so `up` is a quick roll-call). To talk
+to just one, prefix the command with `@<host>`:
+
+```bash
+curl -d "@pi4 status"  https://ntfy.sh/mytopic   # only pi4 replies
+curl -d "status@pi4"   https://ntfy.sh/mytopic   # same, attached form
+curl -d "status"       https://ntfy.sh/mytopic   # all hosts reply
+```
+
+`<host>` matches the machine's hostname (full or short). Each reply's title is
+the hostname, so you can tell them apart. (Prefer separate topics if you want
+hard isolation — the topic is still the password.)
+
+---
+
+## Proxmox (PVE)
+
+On a Proxmox node the `status` report adds a **PVE version** line, and the
+installer/`configure` wizard lists the node's **VMs and CTs** so you can monitor
+them — including a **Home Assistant OS** VM. Picks are stored in
+`SYSMON_CHECK_PVE` (names or VMIDs) and reported like the other checks
+(`running` = ok, anything else = crit). Needs to run as root on the PVE host
+(default there), so `qm` / `pct` are available.
+
+---
+
 ## Language
 
 `SYSMON_LANG=en` (default) or `hu`. Only the report labels are translated;
@@ -130,7 +159,8 @@ sudo sysmon configure
 
 It will:
 
-- **list every running docker container and systemd service** on the machine,
+- **list every running docker container and systemd service** on the machine
+  (plus **Proxmox VMs/CTs** if it's a PVE node — e.g. your Home Assistant OS VM),
 - mark your current picks, and let you **re-select** (by number or name,
   `*` = all, `-` = none, Enter = keep),
 - **save** the choices into the service and **restart** it for you.
@@ -139,10 +169,10 @@ No file editing, no remembering env-var names. The same wizard also runs at the
 end of the installer the first time.
 
 Behind the scenes the picks are stored as `SYSMON_CHECK_SERVICES` /
-`SYSMON_CHECK_DOCKER` in the systemd unit, and `extra_tasks()` checks them on
-every `status` — a stopped one raises the alert priority. (Manual alternative:
-edit those two `Environment=` lines in `/etc/systemd/system/sysmon.service`,
-then `daemon-reload` + `restart`.)
+`SYSMON_CHECK_DOCKER` / `SYSMON_CHECK_PVE` in the systemd unit, and
+`extra_tasks()` checks them on every `status` — a stopped one raises the alert
+priority. (Manual alternative: edit those `Environment=` lines in
+`/etc/systemd/system/sysmon.service`, then `daemon-reload` + `restart`.)
 
 ### Custom checks in code
 

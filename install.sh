@@ -134,28 +134,37 @@ UPDATE_CHECK_SEL="${SYSMON_UPDATE_CHECK:-}"
 UPDATE_CHECK_SEL="${UPDATE_CHECK_SEL:-86400}"
 ok "version-check: every ${UPDATE_CHECK_SEL}s"
 
-# --- extra-checks wizard (services / docker containers to include in `status`) ---
+# --- extra-checks wizard (services / docker / Proxmox guests in `status`) ---
 CHECK_SERVICES="${SYSMON_CHECK_SERVICES:-}"
 CHECK_DOCKER="${SYSMON_CHECK_DOCKER:-}"
+CHECK_PVE="${SYSMON_CHECK_PVE:-}"
 if [ "$MODE" = update ]; then
   [ -z "$CHECK_SERVICES" ] && CHECK_SERVICES="$(unit_get SYSMON_CHECK_SERVICES)"
   [ -z "$CHECK_DOCKER" ]   && CHECK_DOCKER="$(unit_get SYSMON_CHECK_DOCKER)"
+  [ -z "$CHECK_PVE" ]      && CHECK_PVE="$(unit_get SYSMON_CHECK_PVE)"
 fi
 # only run the wizard interactively and when nothing was preset (env/update)
-if [ -z "${CHECK_SERVICES}${CHECK_DOCKER}" ] && have_tty; then
+if [ -z "${CHECK_SERVICES}${CHECK_DOCKER}${CHECK_PVE}" ] && have_tty; then
   say ""
-  say "${c_b}Extra checks${c_0} — pick services/containers to add to the ${c_b}status${c_0} report"
-  say "${c_d}(a stopped one raises the alert priority). Skip both with Enter.${c_0}"
+  say "${c_b}Extra checks${c_0} — pick services/containers/VMs to add to the ${c_b}status${c_0} report"
+  say "${c_d}(a stopped one raises the alert priority). Skip each with Enter.${c_0}"
   DOCKER_CANDS=()
   if command -v docker >/dev/null 2>&1; then
     mapfile -t DOCKER_CANDS < <($SUDO docker ps --format '{{.Names}}' 2>/dev/null || true)
   fi
   CHECK_DOCKER="$(wizard_pick "docker container" "${DOCKER_CANDS[@]}")"
+  PVE_CANDS=()
+  if command -v qm >/dev/null 2>&1; then            # Proxmox VE host -> list VMs + CTs
+    mapfile -t PVE_CANDS < <( { $SUDO qm list 2>/dev/null | awk 'NR>1{print $2}';
+                                $SUDO pct list 2>/dev/null | awk 'NR>1{print $NF}'; } )
+  fi
+  CHECK_PVE="$(wizard_pick "PVE guest (VM/CT, e.g. HAOS)" "${PVE_CANDS[@]}")"
   mapfile -t SVC_CANDS < <(systemctl list-units --type=service --state=running \
                             --no-legend --plain 2>/dev/null | awk '{print $1}' | sed 's/\.service$//')
   CHECK_SERVICES="$(wizard_pick "service" "${SVC_CANDS[@]}")"
 fi
 [ -n "$CHECK_DOCKER" ]   && ok "containers: ${CHECK_DOCKER}"
+[ -n "$CHECK_PVE" ]      && ok "PVE guests: ${CHECK_PVE}"
 [ -n "$CHECK_SERVICES" ] && ok "services: ${CHECK_SERVICES}"
 
 # --- python3 ---
@@ -214,6 +223,7 @@ Environment=SYSMON_INTERVAL=${INTERVAL_SEL}
 Environment=SYSMON_UPDATE_CHECK=${UPDATE_CHECK_SEL}
 Environment=SYSMON_CHECK_SERVICES=${CHECK_SERVICES}
 Environment=SYSMON_CHECK_DOCKER=${CHECK_DOCKER}
+Environment=SYSMON_CHECK_PVE=${CHECK_PVE}
 ExecStart=/usr/bin/python3 ${DEST}/sysmon.py daemon
 Restart=always
 RestartSec=10
