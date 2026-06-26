@@ -73,12 +73,13 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.7.1"
+VERSION = "1.8.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
 DOCS_URL = "https://vmynick.github.io/rmt_sysmon_ntfy/"
 REPO_URL = "https://github.com/vmynick/rmt_sysmon_ntfy"
+UNIT_PATH = os.environ.get("SYSMON_UNIT", "/etc/systemd/system/sysmon.service")
 
 COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help",
             "version", "checkupdate", "docs",
@@ -127,7 +128,7 @@ T = {
         "degraded": "{h} {sev}",
         "recovered": "{h} recovered",
         "err_topic": "ERROR: set SYSMON_TOPIC (env or top of script).",
-        "usage": "Usage: sysmon.py [daemon|status|print]",
+        "usage": "Usage: sysmon.py [daemon|status|print|configure]",
     },
     "hu": {
         "host": "Gep", "up": "Fut", "load": "Terheles", "mem": "Memoria",
@@ -151,7 +152,7 @@ T = {
         "degraded": "{h} {sev}",
         "recovered": "{h} helyreallt",
         "err_topic": "HIBA: allitsd be a SYSMON_TOPIC-ot (env vagy a script teteje).",
-        "usage": "Hasznalat: sysmon.py [daemon|status|print]",
+        "usage": "Hasznalat: sysmon.py [daemon|status|print|configure]",
     },
 }
 def t(key, **kw):
@@ -270,12 +271,12 @@ def check_docker(name):
         out = subprocess.check_output(
             ["docker", "inspect", "-f", "{{.State.Running}}", name],
             stderr=subprocess.DEVNULL, timeout=5).decode().strip()
-        return (f"docker · {name}", "running" if out == "true" else "stopped",
+        return (f"docker · {name}  ", "running" if out == "true" else "stopped",
                 "ok" if out == "true" else "crit")
     except subprocess.CalledProcessError:
-        return (f"docker · {name}", "absent", "crit")     # no such container
+        return (f"docker · {name}  ", "absent", "crit")     # no such container
     except Exception:
-        return (f"docker · {name}", t("na"), "ok")          # docker missing/unreachable
+        return (f"docker · {name}  ", t("na"), "ok")          # docker missing/unreachable
 
 # ----------------------------------------------------------------------------
 # extra task hook
@@ -579,13 +580,125 @@ def watchdog_loop():
         last = sev
 
 # ----------------------------------------------------------------------------
+# configure wizard  (edit the extra-checks lists in the systemd unit)
+# ----------------------------------------------------------------------------
+def _list_running(kind):
+    """Return running docker container names or systemd service names."""
+    try:
+        if kind == "docker":
+            out = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"],
+                                          stderr=subprocess.DEVNULL, timeout=5)
+            return [l.strip() for l in out.decode().splitlines() if l.strip()]
+        out = subprocess.check_output(
+            ["systemctl", "list-units", "--type=service", "--state=running",
+             "--no-legend", "--plain"], stderr=subprocess.DEVNULL, timeout=5)
+        names = []
+        for l in out.decode().splitlines():
+            if l.split():
+                n = l.split()[0]
+                names.append(n[:-8] if n.endswith(".service") else n)
+        return names
+    except Exception:
+        return []
+
+def _unit_get_env(path, key):
+    try:
+        with open(path) as f:
+            for line in f:
+                if line.startswith(f"Environment={key}="):
+                    return line.split("=", 2)[2].strip()
+    except Exception:
+        pass
+    return ""
+
+def _unit_set_env(path, kv):
+    """Replace (or insert before ExecStart) the given Environment=KEY=value lines."""
+    with open(path) as f:
+        lines = f.readlines()
+    done, out = set(), []
+    for line in lines:
+        for k, v in kv.items():
+            if line.startswith(f"Environment={k}="):
+                out.append(f"Environment={k}={v}\n"); done.add(k); break
+        else:
+            out.append(line)
+    missing = [k for k in kv if k not in done]
+    if missing:
+        merged = []
+        for line in out:
+            if line.startswith("ExecStart=") and missing:
+                merged += [f"Environment={k}={kv[k]}\n" for k in missing]; missing = []
+            merged.append(line)
+        out = merged
+    with open(path, "w") as f:
+        f.writelines(out)
+
+def _pick(kind, candidates, current):
+    print(f"\n{kind}s detected:")
+    if not candidates:
+        print("  (none)")
+    for i, name in enumerate(candidates, 1):
+        mark = "*" if name in current else " "
+        print(f"  [{mark}] {i:>2}) {name}")
+    print("  numbers/names (comma-sep) · * = all · - = none · Enter = keep current")
+    ans = input(f"{kind}s to monitor: ").strip()
+    if ans == "":
+        return current
+    if ans == "-":
+        return []
+    if ans == "*":
+        return list(candidates)
+    chosen = []
+    for tok in ans.replace(",", " ").split():
+        if tok.isdigit():
+            i = int(tok) - 1
+            if 0 <= i < len(candidates):
+                chosen.append(candidates[i])
+        else:
+            chosen.append(tok)
+    seen, out = set(), []                     # dedupe, keep order
+    for c in chosen:
+        if c not in seen:
+            seen.add(c); out.append(c)
+    return out
+
+def configure_wizard():
+    if getattr(os, "geteuid", lambda: 0)() != 0:      # geteuid is POSIX-only
+        print("Run as root:  sudo python3 sysmon.py configure"); sys.exit(1)
+    if not os.path.exists(UNIT_PATH):
+        print(f"No systemd unit at {UNIT_PATH}.")
+        print("Install via install.sh first, or set SYSMON_CHECK_SERVICES /")
+        print("SYSMON_CHECK_DOCKER yourself."); sys.exit(1)
+
+    cur_svc = [s for s in _unit_get_env(UNIT_PATH, "SYSMON_CHECK_SERVICES").split(",") if s]
+    cur_dkr = [s for s in _unit_get_env(UNIT_PATH, "SYSMON_CHECK_DOCKER").split(",") if s]
+    print("sysmon — configure extra checks (added to the 'status' report)")
+    print(f"  current services:   {', '.join(cur_svc) or '(none)'}")
+    print(f"  current containers: {', '.join(cur_dkr) or '(none)'}")
+
+    dkr = _pick("docker container", _list_running("docker"), cur_dkr)
+    svc = _pick("service", _list_running("service"), cur_svc)
+
+    print(f"\nNew services:   {', '.join(svc) or '(none)'}")
+    print(f"New containers: {', '.join(dkr) or '(none)'}")
+    if input("Save and restart sysmon? [Y/n]: ").strip().lower() not in ("", "y", "yes"):
+        print("cancelled."); return
+    _unit_set_env(UNIT_PATH, {"SYSMON_CHECK_SERVICES": ",".join(svc),
+                              "SYSMON_CHECK_DOCKER": ",".join(dkr)})
+    subprocess.call(["systemctl", "daemon-reload"])
+    subprocess.call(["systemctl", "restart", "sysmon.service"])
+    print("saved + restarted. Send 'status' to verify.")
+
+# ----------------------------------------------------------------------------
 # entry point
 # ----------------------------------------------------------------------------
 def main():
+    mode = sys.argv[1] if len(sys.argv) > 1 else "daemon"
+    if mode in ("configure", "wizard"):
+        configure_wizard(); return
     if TOPIC.endswith("CHANGE_ME"):
         print(t("err_topic"), file=sys.stderr)
         sys.exit(1)
-    mode = sys.argv[1] if len(sys.argv) > 1 else "daemon"
     if mode == "status":
         msg, sev = build_status(full=True)
         ok = publish(msg, title=f"{HOSTNAME} status", tags="bar_chart", severity=sev)

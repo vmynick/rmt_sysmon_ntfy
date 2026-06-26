@@ -179,6 +179,14 @@ fi
 $SUDO chmod +x "$DEST/sysmon.py"
 ok "installed: ${DEST}/sysmon.py"
 
+# convenience wrapper: `sudo sysmon configure` / `sudo sysmon status` ...
+$SUDO tee /usr/local/bin/sysmon >/dev/null <<WRAP
+#!/bin/sh
+exec /usr/bin/python3 ${DEST}/sysmon.py "\$@"
+WRAP
+$SUDO chmod +x /usr/local/bin/sysmon
+ok "wrapper: sysmon  (try: sudo sysmon configure)"
+
 # --- run user ---
 RUN_USER="${SUDO_USER:-$(id -un)}"
 # note: $DEST stays root-owned on purpose — the service user cannot overwrite
@@ -225,7 +233,8 @@ say "  Subscribe on your phone (ntfy app): topic ${c_b}${TOPIC}${c_0}, server ${
 say "  Send a command from anywhere:"
 say "    ${c_g}curl -d status ${SERVER}/${TOPIC}${c_0}"
 say ""
+say "  Edit checks: ${SUDO:+sudo }sysmon configure"
 say "  Logs:    journalctl -u sysmon -f"
 say "  Stop:    ${SUDO:+sudo }systemctl stop sysmon"
-say "  Remove:  ${SUDO:+sudo }systemctl disable --now sysmon && ${SUDO:+sudo }rm ${SVC} ${DEST}/sysmon.py"
+say "  Remove:  ${SUDO:+sudo }systemctl disable --now sysmon && ${SUDO:+sudo }rm ${SVC} ${DEST}/sysmon.py /usr/local/bin/sysmon"
 say ""

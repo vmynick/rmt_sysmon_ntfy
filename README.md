@@ -121,7 +121,18 @@ containers and systemd services on the machine and lets you pick which to
 monitor (by number or name, `*` for all). The choices are stored as
 `SYSMON_CHECK_SERVICES` / `SYSMON_CHECK_DOCKER` in the service, and
 `extra_tasks()` checks them on every `status` — a stopped one raises the
-alert priority. Re-running the installer in **update** mode keeps your picks.
+alert priority.
+
+**Edit them any time** with the same wizard:
+
+```bash
+sudo sysmon configure
+```
+
+It shows your current picks, lists what's running, you re-select, and it
+writes the service + restarts it. (Manual alternative: edit the two
+`Environment=SYSMON_CHECK_*` lines in `/etc/systemd/system/sysmon.service`,
+then `daemon-reload` + `restart`.)
 
 You can also edit `extra_tasks()` directly for custom checks. It returns
 `(label, value, severity)` tuples; helpers `check_service(name)` and

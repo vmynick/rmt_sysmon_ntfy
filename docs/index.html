@@ -149,7 +149,7 @@
   <p class="tagline l-en">One Python script. ntfy.sh push + command-response. Shareable one-liner commands. One-command install.</p>
   <p class="tagline l-hu">Egy Python script. ntfy.sh push + parancs-válasz. Megosztható egysoros parancsokkal. Egyparancsos telepítés.</p>
   <div>
-    <span class="pill" id="version">v1.7.1</span>
+    <span class="pill" id="version">v1.8.0</span>
     <span class="pill"><span class="l-en">stdlib only</span><span class="l-hu">csak stdlib</span></span>
     <span class="pill">systemd</span>
     <span class="pill"><span class="l-en">EN / HU replies</span><span class="l-hu">EN / HU válasz</span></span>
@@ -307,9 +307,9 @@ curl -H <span class="v">"Actions: http, Top, https://ntfy.sh/mytopic, method=POS
     <p class="eyebrow l-hu">Extra taskok <span>saját ellenőrzések</span></p>
     <div class="card">
       <p class="l-en" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
-        The installer ends with a <b>wizard</b> that lists your running docker containers and systemd services and lets you pick which to monitor (number/name, <code>*</code> = all). Picks are stored as <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> and checked on every <code>status</code>. You can also edit <code>extra_tasks()</code> directly — helpers <code>check_service()</code> and <code>check_docker()</code> are included.</p>
+        The installer ends with a <b>wizard</b> that lists your running docker containers and systemd services and lets you pick which to monitor (number/name, <code>*</code> = all). Edit them any time with <code>sudo sysmon configure</code> — it re-lists, you re-pick, and it updates + restarts the service. Picks live in <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> and run on every <code>status</code>. You can also edit <code>extra_tasks()</code> directly — helpers <code>check_service()</code> / <code>check_docker()</code> are included.</p>
       <p class="l-hu" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
-        A telepítő végén egy <b>varázsló</b> listázza a futó docker konténereket és systemd service-eket, és kiválaszthatod, melyiket figyelje (szám/név, <code>*</code> = mind). A választás a <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> változókba kerül, és minden <code>status</code>-nál ellenőrzi. Az <code>extra_tasks()</code> közvetlenül is szerkeszthető — beépített segédek: <code>check_service()</code> és <code>check_docker()</code>.</p>
+        A telepítő végén egy <b>varázsló</b> listázza a futó docker konténereket és systemd service-eket, és kiválaszthatod, melyiket figyelje (szám/név, <code>*</code> = mind). Bármikor szerkeszd a <code>sudo sysmon configure</code> paranccsal — újra listáz, újraválasztasz, és frissíti + újraindítja a service-t. A választás a <code>SYSMON_CHECK_SERVICES</code> / <code>SYSMON_CHECK_DOCKER</code> változókban van, és minden <code>status</code>-nál fut. Az <code>extra_tasks()</code> közvetlenül is szerkeszthető — segédek: <code>check_service()</code> / <code>check_docker()</code>.</p>
       <div class="cmd"><span class="c"># sysmon.py</span>
 def extra_tasks():
     results = []
