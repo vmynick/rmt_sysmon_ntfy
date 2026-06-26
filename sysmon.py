@@ -23,6 +23,7 @@ Config via environment:
     SYSMON_SERVER   ntfy server URL          (default https://ntfy.sh)
     SYSMON_LANG     response language en|hu   (default en)
     SYSMON_INTERVAL watchdog seconds; 0=off   (default 300)
+    SYSMON_UPDATE_CHECK version-check seconds; 0=off (default 86400)
 
 Message priority scales with severity (disk/mem/temp thresholds):
     ok -> default | warn -> high | crit -> urgent
@@ -54,6 +55,10 @@ try:
     INTERVAL = int(os.environ.get("SYSMON_INTERVAL", "300"))   # watchdog period; 0 disables
 except ValueError:
     INTERVAL = 300
+try:
+    UPDATE_CHECK = int(os.environ.get("SYSMON_UPDATE_CHECK", "86400"))  # version-check period; 0 disables
+except ValueError:
+    UPDATE_CHECK = 86400
 
 HOSTNAME = socket.gethostname()
 SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
@@ -61,7 +66,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -356,18 +361,30 @@ def _newer(remote, local):
     except Exception:
         return bool(remote) and remote != local
 
+_notified_ver = None      # remember the version we last announced (avoid repeat pings)
+
 def notify_if_update():
-    """Check the repo for a newer version; if found, push a note + Update button."""
+    """Check the repo for a newer version; if found, push a note + Update button.
+    Pings once per discovered version, so periodic checks don't spam."""
+    global _notified_ver
     try:
         new_ver = _parse_version(_fetch_remote_script())
     except Exception as e:
         print(f"[update-check] {e}", file=sys.stderr)
         return
-    if new_ver and _newer(new_ver, VERSION):
+    if new_ver and _newer(new_ver, VERSION) and new_ver != _notified_ver:
+        _notified_ver = new_ver
         publish(t("upd_avail", h=HOSTNAME, cur=VERSION, new=new_ver),
                 title=t("upd_avail_title", h=HOSTNAME), tags="arrow_up",
                 actions="; ".join([_action("Update now", "update"),
                                    _view("Docs", DOCS_URL)]))
+
+def update_loop():
+    """Periodically re-check GitHub for a newer version (independent of watchdog)."""
+    print(f"[sysmon] version-check: every {UPDATE_CHECK}s")
+    while True:
+        time.sleep(UPDATE_CHECK)
+        notify_if_update()
 
 def do_update():
     """Download the latest script; if newer, overwrite this file and re-exec."""
@@ -513,6 +530,8 @@ def main():
         threading.Thread(target=notify_if_update, daemon=True).start()   # ping if a newer version is out
         if INTERVAL > 0:
             threading.Thread(target=watchdog_loop, daemon=True).start()
+        if UPDATE_CHECK > 0:
+            threading.Thread(target=update_loop, daemon=True).start()    # re-check version periodically
         subscribe_loop()
     else:
         print(t("usage")); sys.exit(1)

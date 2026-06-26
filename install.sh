@@ -102,6 +102,12 @@ INTERVAL_SEL="${SYSMON_INTERVAL:-}"
 INTERVAL_SEL="${INTERVAL_SEL:-300}"
 ok "watchdog: every ${INTERVAL_SEL}s"
 
+# --- version-check interval (env, else keep existing on update, else 86400) ---
+UPDATE_CHECK_SEL="${SYSMON_UPDATE_CHECK:-}"
+[ -z "$UPDATE_CHECK_SEL" ] && [ "$MODE" = update ] && UPDATE_CHECK_SEL="$(unit_get SYSMON_UPDATE_CHECK)"
+UPDATE_CHECK_SEL="${UPDATE_CHECK_SEL:-86400}"
+ok "version-check: every ${UPDATE_CHECK_SEL}s"
+
 # --- python3 ---
 if ! command -v python3 >/dev/null 2>&1; then
   say "Installing python3..."
@@ -148,6 +154,7 @@ Environment=SYSMON_TOPIC=${TOPIC}
 Environment=SYSMON_SERVER=${SERVER}
 Environment=SYSMON_LANG=${LANG_SEL}
 Environment=SYSMON_INTERVAL=${INTERVAL_SEL}
+Environment=SYSMON_UPDATE_CHECK=${UPDATE_CHECK_SEL}
 ExecStart=/usr/bin/python3 ${DEST}/sysmon.py daemon
 Restart=always
 RestartSec=10

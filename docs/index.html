@@ -149,7 +149,7 @@
   <p class="tagline l-en">One Python script. ntfy.sh push + command-response. Shareable one-liner commands. One-command install.</p>
   <p class="tagline l-hu">Egy Python script. ntfy.sh push + parancs-válasz. Megosztható egysoros parancsokkal. Egyparancsos telepítés.</p>
   <div>
-    <span class="pill" id="version">v1.3.0</span>
+    <span class="pill" id="version">v1.4.0</span>
     <span class="pill"><span class="l-en">stdlib only</span><span class="l-hu">csak stdlib</span></span>
     <span class="pill">systemd</span>
     <span class="pill"><span class="l-en">EN / HU replies</span><span class="l-hu">EN / HU válasz</span></span>
@@ -352,8 +352,8 @@ def extra_tasks():
         The daemon doesn't only answer commands. Every <code>SYSMON_INTERVAL</code> seconds (default 300, <code>0</code> disables) it re-checks status and pushes <b>only when the severity level changes</b> — a <code>high</code>/<code>urgent</code> alert on degrade, a quiet "recovered" back to ok. No spam while everything is fine.</p>
       <p class="l-hu" style="margin:0 0 10px;color:var(--ink-dim);font-size:13.5px">
         A daemon nem csak válaszol. Minden <code>SYSMON_INTERVAL</code> másodpercben (alap 300, <code>0</code> = ki) újraellenőrzi a státuszt, és <b>csak akkor küld push-t, ha a súlyossági szint változik</b> — <code>high</code>/<code>urgent</code> riasztás romláskor, halk „helyreállt" ha visszaáll. Nincs spam, amíg minden rendben.</p>
-      <p class="note l-en" style="margin:0">On start it also checks the repo for a newer version and pings the topic with an <b>Update now</b> button if one is available.</p>
-      <p class="note l-hu" style="margin:0">Indításkor megnézi a repót, és ha elérhető újabb verzió, jelez a topicra egy <b>Update now</b> gombbal.</p>
+      <p class="note l-en" style="margin:0">It also watches GitHub for new releases — on start, then every <code>SYSMON_UPDATE_CHECK</code> seconds (default daily, <code>0</code> = off). A newer version pings the topic once with an <b>Update now</b> button.</p>
+      <p class="note l-hu" style="margin:0">A GitHubot is figyeli új kiadás után — indításkor, majd <code>SYSMON_UPDATE_CHECK</code> másodpercenként (alap napi, <code>0</code> = ki). Újabb verzió egyszer jelez a topicra egy <b>Update now</b> gombbal.</p>
     </div>
   </section>
 
