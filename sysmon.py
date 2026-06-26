@@ -15,6 +15,7 @@ Commands (always English):
     top     -> top 5 processes by CPU
     net     -> per-interface RX/TX totals
     hosts   -> this host's name/ip/version/uptime (roll-call on a shared topic)
+    menu    -> clickable command buttons (grouped; 3 per ntfy message)
     version     -> running script version
     checkupdate -> report if a newer version is on GitHub (read-only)
     docs        -> push links with "Open docs" / "GitHub" buttons
@@ -94,7 +95,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.10.0"
+VERSION = "1.11.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -103,8 +104,12 @@ REPO_URL = "https://github.com/vmynick/rmt_sysmon_ntfy"
 UNIT_PATH = os.environ.get("SYSMON_UNIT", "/etc/systemd/system/sysmon.service")
 
 COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "net",
-            "hosts", "help", "version", "checkupdate", "docs",
+            "hosts", "help", "menu", "version", "checkupdate", "docs",
             "dismiss", "remind6h", "remind2d"}     # update-notice buttons
+
+# `menu`: clickable command buttons, grouped (ntfy caps each message at 3 buttons)
+MENU = (("status", "top", "disk"),
+        ("mem", "net", "hosts"))
 
 # severity thresholds (percent for disk/mem, Celsius for temp)
 TH = {
@@ -134,7 +139,7 @@ T = {
         "started": "{h} sysmon started.",
         "online": "{h} online",
         "help": "Commands: status, up, ping, disk, mem, temp, top, net, "
-                "hosts, version, checkupdate, docs, help",
+                "hosts, menu, version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon docs & links — tap a button below.",
         "na": "n/a", "sent": "sent", "failed": "failed",
@@ -158,7 +163,7 @@ T = {
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
         "help": "Parancsok: status, up, ping, disk, mem, temp, top, net, "
-                "hosts, version, checkupdate, docs, help",
+                "hosts, menu, version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon dokumentacio es linkek — koppints egy gombra lent.",
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
@@ -651,7 +656,14 @@ def handle_command(raw):
                 actions="; ".join([_view("Open docs", DOCS_URL),
                                     _view("GitHub", REPO_URL)]))
     elif cmd == "help":
-        publish(t("help"), title="sysmon help", tags="information_source")
+        # ntfy caps action buttons at 3; offer the top ones (tap clears this notice)
+        publish(t("help"), title="sysmon help", tags="information_source",
+                actions=status_actions())
+    elif cmd == "menu":
+        for i, group in enumerate(MENU, 1):       # grouped clickable buttons
+            acts = "; ".join(_action(c.capitalize(), c) for c in group)
+            publish("Tap a command:", title=f"sysmon menu {i}/{len(MENU)}",
+                    tags="joystick", actions=acts)
 
 # ----------------------------------------------------------------------------
 # subscribe loop

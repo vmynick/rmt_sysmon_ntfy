@@ -66,6 +66,7 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | `top`    | top 5 processes by CPU |
 | `net`    | per-interface RX/TX totals |
 | `hosts`  | this host's name · ip · version · uptime (roll-call) |
+| `menu`   | clickable command buttons (grouped) |
 | `version`| running script version |
 | `checkupdate` | report if a newer version is on GitHub (read-only) |
 | `docs`   | push a message with **Open docs** / **GitHub** buttons |
@@ -74,7 +75,12 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 Commands are **always English**. Unknown command → silently dropped (allowlist).
 
 Status/alert notifications carry **action buttons** (Status · Top · Disk) — tap
-one in the ntfy app to send that command back, no typing.
+one in the ntfy app to send that command back, no typing. `help` carries the
+same buttons; **`menu`** sends grouped buttons so more commands are one-tap.
+Tapping a button **clears that notification** (`clear=true`).
+
+> ntfy allows at most **3 buttons per message** — that's why `menu` groups them
+> across a couple of notifications rather than one big clickable list.
 
 ---
 
