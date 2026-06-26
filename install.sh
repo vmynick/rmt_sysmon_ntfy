@@ -97,6 +97,11 @@ ok "installed: ${DEST}/sysmon.py"
 # --- run user ---
 RUN_USER="${SUDO_USER:-$(id -un)}"
 
+# allow vcgencmd temperature reads (Raspberry Pi: /dev/vcio is group 'video')
+if getent group video >/dev/null 2>&1; then
+  $SUDO usermod -aG video "$RUN_USER" 2>/dev/null && ok "temp access: ${RUN_USER} added to 'video' group" || true
+fi
+
 # --- systemd service ---
 $SUDO tee "$SVC" >/dev/null <<UNIT
 [Unit]
