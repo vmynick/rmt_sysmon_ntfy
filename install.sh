@@ -45,8 +45,28 @@ else
   SUDO=""
 fi
 
+# --- existing install? update (keep settings) or clean ---
+unit_get(){ $SUDO sed -n "s/^Environment=$1=//p" "$SVC" 2>/dev/null | head -n1; }
+MODE=clean
+EXIST_TOPIC=""; EXIST_SERVER=""; EXIST_LANG=""; EXIST_INTERVAL=""
+if [ -f "$SVC" ]; then
+  EXIST_TOPIC="$(unit_get SYSMON_TOPIC)"
+  EXIST_SERVER="$(unit_get SYSMON_SERVER)"
+  EXIST_LANG="$(unit_get SYSMON_LANG)"
+  EXIST_INTERVAL="$(unit_get SYSMON_INTERVAL)"
+  say "${c_y}Existing install found${c_0} (${SVC})."
+  say "  topic: ${EXIST_TOPIC:-?}  lang: ${EXIST_LANG:-?}  server: ${EXIST_SERVER:-?}"
+  ANS=""
+  if have_tty; then
+    ask "[U]pdate (keep settings) or [c]lean install? [U]:"; read -r ANS <&3 || true
+  fi
+  case "${ANS:-u}" in c|C|clean) MODE=clean;; *) MODE=update;; esac
+  ok "mode: ${MODE}"
+fi
+
 # --- topic ---
 TOPIC="${SYSMON_TOPIC:-}"
+[ -z "$TOPIC" ] && [ "$MODE" = update ] && TOPIC="$EXIST_TOPIC"
 if [ -z "$TOPIC" ]; then
   GEN="sysmon-$(python3 -c 'import secrets;print(secrets.token_hex(8))' 2>/dev/null \
         || head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -60,6 +80,7 @@ ok "topic: ${TOPIC}"
 
 # --- language ---
 LANG_SEL="${SYSMON_LANG:-}"
+[ -z "$LANG_SEL" ] && [ "$MODE" = update ] && LANG_SEL="$EXIST_LANG"
 if [ -z "$LANG_SEL" ]; then
   if have_tty; then
     ask "Response language en/hu [en]:"; read -r LANG_SEL <&3 || true
@@ -69,12 +90,16 @@ fi
 case "$LANG_SEL" in hu|HU) LANG_SEL=hu;; *) LANG_SEL=en;; esac
 ok "language: ${LANG_SEL}  (commands stay English)"
 
-# --- server (env only, default ntfy.sh) ---
-SERVER="${SYSMON_SERVER:-https://ntfy.sh}"
+# --- server (env, else keep existing on update, else ntfy.sh) ---
+SERVER="${SYSMON_SERVER:-}"
+[ -z "$SERVER" ] && [ "$MODE" = update ] && SERVER="$EXIST_SERVER"
+SERVER="${SERVER:-https://ntfy.sh}"
 ok "server: ${SERVER}"
 
-# --- watchdog interval (env only, seconds; 0 disables proactive alerts) ---
-INTERVAL_SEL="${SYSMON_INTERVAL:-300}"
+# --- watchdog interval (env, else keep existing on update, else 300) ---
+INTERVAL_SEL="${SYSMON_INTERVAL:-}"
+[ -z "$INTERVAL_SEL" ] && [ "$MODE" = update ] && INTERVAL_SEL="$EXIST_INTERVAL"
+INTERVAL_SEL="${INTERVAL_SEL:-300}"
 ok "watchdog: every ${INTERVAL_SEL}s"
 
 # --- python3 ---
@@ -132,8 +157,9 @@ WantedBy=multi-user.target
 UNIT
 
 $SUDO systemctl daemon-reload
-$SUDO systemctl enable --now sysmon.service
-ok "service running"
+$SUDO systemctl enable sysmon.service >/dev/null 2>&1 || true
+$SUDO systemctl restart sysmon.service          # restart so update reloads new code
+ok "service running (${MODE})"
 
 say ""
 say "${c_b}Done.${c_0}"

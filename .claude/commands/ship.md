@@ -29,7 +29,9 @@ bilingual. Do not invent features the code doesn't have.
 ## 3. Version
 If `sysmon.py` behaviour changed since the last commit (new/changed command or
 feature), bump `VERSION` (semver: feature → minor, fix → patch). Keep the README
-/ one-pager command tables in sync with the bump.
+/ one-pager command tables in sync with the bump. The one-pager shows the version
+in the hero pill `<span class="pill" id="version">vX.Y.Z</span>` — update it so it
+matches `sysmon.py`'s `VERSION` exactly.
 
 ## 4. Verify
 - `python -m py_compile sysmon.py`

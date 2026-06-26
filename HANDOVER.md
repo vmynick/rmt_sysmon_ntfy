@@ -16,6 +16,8 @@ Remote system monitor: ntfy.sh push + command-response. Python stdlib only.
   thresholds in `TH` dict (disk/mem/temp)
 - Loop prevention: self-tag, allowlist, 4s dedup, 8/60s rate limit
 - One-line installer prompts only for topic + lang (Enter=default), else env-driven
+- Installer detects an existing install (reads env from the unit) and offers
+  update (keep topic/lang/server/interval) or clean install; restarts service
 - All placeholders set to vmynick/rmt_sysmon_ntfy
 - Watchdog (`SYSMON_INTERVAL`, default 300, 0=off): background thread pushes
   only when severity level changes (degrade/recover) — proactive alerts

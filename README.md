@@ -20,6 +20,12 @@ Enter accepts the default) and does everything else: checks/installs
 python3, copies to `/opt/sysmon/`, creates a `systemd` service
 (auto-start on boot, auto-restart), and starts it.
 
+**Re-running on an existing install** detects it and asks whether to
+**update** (keep the current topic / language / server / interval and just
+refresh the script) or do a **clean install** (pick a new topic). Either way
+the service is restarted so the new code loads. `update` over ntfy also
+self-updates the script — the installer is for when you want to re-bootstrap.
+
 Fully unattended (e.g. many machines):
 
 ```bash
