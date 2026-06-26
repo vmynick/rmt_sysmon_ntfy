@@ -110,9 +110,16 @@ once, so it won't nag.
 
 ## Extra tasks
 
-Add your own checks in `extra_tasks()` — returns `(label, value, severity)`
-tuples, appended to the `status` report; severity feeds the priority.
-Ready-made helpers `check_service(name)` and `check_docker(name)` are included:
+The installer ends with a small **wizard**: it lists the running docker
+containers and systemd services on the machine and lets you pick which to
+monitor (by number or name, `*` for all). The choices are stored as
+`SYSMON_CHECK_SERVICES` / `SYSMON_CHECK_DOCKER` in the service, and
+`extra_tasks()` checks them on every `status` — a stopped one raises the
+alert priority. Re-running the installer in **update** mode keeps your picks.
+
+You can also edit `extra_tasks()` directly for custom checks. It returns
+`(label, value, severity)` tuples; helpers `check_service(name)` and
+`check_docker(name)` are included:
 
 ```python
 def extra_tasks():

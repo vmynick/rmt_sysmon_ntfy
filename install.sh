@@ -23,6 +23,32 @@ ask(){ printf '%s%s%s ' "$c_y" "$*" "$c_0"; }
 TTY=/dev/tty
 have_tty(){ [ -e "$TTY" ] && exec 3<"$TTY"; }
 
+# wizard_pick "<label>" item1 item2 ...
+#   lists the items (prompts to stderr), reads a selection from the tty,
+#   echoes the chosen names as a comma-separated list on stdout.
+#   accepts numbers, names, '*' = all, Enter = none.
+wizard_pick(){
+  local label="$1"; shift
+  local -a items=("$@")
+  local n=${#items[@]} i=1 it tok sel out="" ans=""
+  if [ "$n" -eq 0 ]; then say "  (no ${label}s detected)" >&2; return 0; fi
+  say "Detected ${label}s:" >&2
+  for it in "${items[@]}"; do printf '  %2d) %s\n' "$i" "$it" >&2; i=$((i+1)); done
+  printf '%sPick %ss to monitor — numbers/names, * = all, Enter = none: %s' \
+    "$c_y" "$label" "$c_0" >&2
+  read -r ans <&3 || true
+  [ -z "$ans" ] && return 0
+  if [ "$ans" = "*" ]; then (IFS=,; echo "${items[*]}"); return 0; fi
+  for tok in ${ans//,/ }; do
+    case "$tok" in
+      ''|*[!0-9]*) sel="$tok" ;;                 # has a non-digit -> treat as a name
+      *)           sel="${items[$((tok-1))]:-}" ;;  # pure number -> index into the list
+    esac
+    [ -n "$sel" ] && out="${out:+$out,}$sel"
+  done
+  echo "$out"
+}
+
 say ""
 say "${c_b}sysmon installer${c_0}"
 say "${c_d}-----------------------------------------------------------${c_0}"
@@ -108,6 +134,30 @@ UPDATE_CHECK_SEL="${SYSMON_UPDATE_CHECK:-}"
 UPDATE_CHECK_SEL="${UPDATE_CHECK_SEL:-86400}"
 ok "version-check: every ${UPDATE_CHECK_SEL}s"
 
+# --- extra-checks wizard (services / docker containers to include in `status`) ---
+CHECK_SERVICES="${SYSMON_CHECK_SERVICES:-}"
+CHECK_DOCKER="${SYSMON_CHECK_DOCKER:-}"
+if [ "$MODE" = update ]; then
+  [ -z "$CHECK_SERVICES" ] && CHECK_SERVICES="$(unit_get SYSMON_CHECK_SERVICES)"
+  [ -z "$CHECK_DOCKER" ]   && CHECK_DOCKER="$(unit_get SYSMON_CHECK_DOCKER)"
+fi
+# only run the wizard interactively and when nothing was preset (env/update)
+if [ -z "${CHECK_SERVICES}${CHECK_DOCKER}" ] && have_tty; then
+  say ""
+  say "${c_b}Extra checks${c_0} — pick services/containers to add to the ${c_b}status${c_0} report"
+  say "${c_d}(a stopped one raises the alert priority). Skip both with Enter.${c_0}"
+  DOCKER_CANDS=()
+  if command -v docker >/dev/null 2>&1; then
+    mapfile -t DOCKER_CANDS < <($SUDO docker ps --format '{{.Names}}' 2>/dev/null || true)
+  fi
+  CHECK_DOCKER="$(wizard_pick "docker container" "${DOCKER_CANDS[@]}")"
+  mapfile -t SVC_CANDS < <(systemctl list-units --type=service --state=running \
+                            --no-legend --plain 2>/dev/null | awk '{print $1}' | sed 's/\.service$//')
+  CHECK_SERVICES="$(wizard_pick "service" "${SVC_CANDS[@]}")"
+fi
+[ -n "$CHECK_DOCKER" ]   && ok "containers: ${CHECK_DOCKER}"
+[ -n "$CHECK_SERVICES" ] && ok "services: ${CHECK_SERVICES}"
+
 # --- python3 ---
 if ! command -v python3 >/dev/null 2>&1; then
   say "Installing python3..."
@@ -155,6 +205,8 @@ Environment=SYSMON_SERVER=${SERVER}
 Environment=SYSMON_LANG=${LANG_SEL}
 Environment=SYSMON_INTERVAL=${INTERVAL_SEL}
 Environment=SYSMON_UPDATE_CHECK=${UPDATE_CHECK_SEL}
+Environment=SYSMON_CHECK_SERVICES=${CHECK_SERVICES}
+Environment=SYSMON_CHECK_DOCKER=${CHECK_DOCKER}
 ExecStart=/usr/bin/python3 ${DEST}/sysmon.py daemon
 Restart=always
 RestartSec=10

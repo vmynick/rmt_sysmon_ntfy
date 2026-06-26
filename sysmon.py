@@ -24,6 +24,8 @@ Config via environment:
     SYSMON_LANG     response language en|hu   (default en)
     SYSMON_INTERVAL watchdog seconds; 0=off   (default 300)
     SYSMON_UPDATE_CHECK version-check seconds; 0=off (default 86400)
+    SYSMON_CHECK_SERVICES  comma-separated systemd units to monitor in `status`
+    SYSMON_CHECK_DOCKER    comma-separated docker containers to monitor in `status`
 
 Message priority scales with severity (disk/mem/temp thresholds):
     ok -> default | warn -> high | crit -> urgent
@@ -60,13 +62,17 @@ try:
 except ValueError:
     UPDATE_CHECK = 86400
 
+# extra checks selected by the installer wizard (comma-separated names)
+CHECK_SERVICES = [s.strip() for s in os.environ.get("SYSMON_CHECK_SERVICES", "").split(",") if s.strip()]
+CHECK_DOCKER   = [s.strip() for s in os.environ.get("SYSMON_CHECK_DOCKER",   "").split(",") if s.strip()]
+
 HOSTNAME = socket.gethostname()
 SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -249,7 +255,10 @@ def get_ip():
 # reusable checks for extra_tasks()  (each returns a (label, value, severity) tuple)
 # ----------------------------------------------------------------------------
 def check_service(name):
-    ok = subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0
+    try:
+        ok = subprocess.call(["systemctl", "is-active", "--quiet", name]) == 0
+    except Exception:
+        return (name, t("na"), "ok")              # no systemctl / not systemd
     return (name, "up" if ok else "DOWN", "ok" if ok else "crit")
 
 def check_docker(name):
@@ -276,12 +285,15 @@ def extra_tasks():
     """
     results = []
 
-    # --- check several docker containers are running ---
-    # for name in ("homeassistant", "mosquitto", "node-red"):
-    #     results.append(check_docker(name))   # running=ok, stopped/absent=crit
+    # selected by the installer wizard (SYSMON_CHECK_SERVICES / SYSMON_CHECK_DOCKER)
+    for name in CHECK_SERVICES:
+        results.append(check_service(name))   # up=ok, down=crit
+    for name in CHECK_DOCKER:
+        results.append(check_docker(name))    # running=ok, stopped/absent=crit
 
-    # --- check systemd services ---
+    # --- add your own checks here too, e.g. ---
     # results.append(check_service("nginx"))
+    # results.append(check_docker("node-red"))
 
     return results
 
