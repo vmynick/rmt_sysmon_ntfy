@@ -149,7 +149,7 @@
   <p class="tagline l-en">One Python script. ntfy.sh push + command-response. Shareable one-liner commands. One-command install.</p>
   <p class="tagline l-hu">Egy Python script. ntfy.sh push + parancs-válasz. Megosztható egysoros parancsokkal. Egyparancsos telepítés.</p>
   <div>
-    <span class="pill" id="version">v1.11.0</span>
+    <span class="pill" id="version">v1.11.1</span>
     <span class="pill"><span class="l-en">stdlib only</span><span class="l-hu">csak stdlib</span></span>
     <span class="pill">systemd</span>
     <span class="pill"><span class="l-en">EN / HU replies</span><span class="l-hu">EN / HU válasz</span></span>
@@ -251,7 +251,6 @@ extra
         <tr><td class="k">top</td><td><span class="l-en">top 5 processes by CPU</span><span class="l-hu">top 5 folyamat CPU szerint</span></td></tr>
         <tr><td class="k">net</td><td><span class="l-en">per-interface RX/TX totals</span><span class="l-hu">interfészenkénti RX/TX</span></td></tr>
         <tr><td class="k">hosts</td><td><span class="l-en">name · ip · version · uptime (roll-call)</span><span class="l-hu">név · ip · verzió · uptime (névsor)</span></td></tr>
-        <tr><td class="k">menu</td><td><span class="l-en">clickable command buttons (grouped)</span><span class="l-hu">kattintható parancsgombok (csoportosítva)</span></td></tr>
         <tr><td class="k">version</td><td><span class="l-en">running script version</span><span class="l-hu">futó szkript verziója</span></td></tr>
         <tr><td class="k">checkupdate</td><td><span class="l-en">report if a newer version is on GitHub (read-only)</span><span class="l-hu">jelez, ha újabb verzió van GitHubon (csak olvasás)</span></td></tr>
         <tr><td class="k">docs</td><td><span class="l-en">push a message with <b>Open docs</b> / <b>GitHub</b> buttons</span><span class="l-hu">üzenet <b>Open docs</b> / <b>GitHub</b> gombokkal</span></td></tr>
@@ -259,8 +258,8 @@ extra
       </table>
       <p class="note l-en">Unknown command → silently dropped (allowlist).</p>
       <p class="note l-hu">Ismeretlen parancs → csendben eldobva (allowlist).</p>
-      <p class="note l-en">Status &amp; alert notifications carry <b>action buttons</b> (Status · Top · Disk) — tap one to send that command back (and it clears the notice). <code>help</code> has the same buttons; <code>menu</code> sends grouped buttons so more commands are one-tap (ntfy caps each message at 3).</p>
-      <p class="note l-hu">A status- és riasztás-értesítéseken <b>akciógombok</b> vannak (Status · Top · Disk) — koppints a parancs visszaküldéséhez (és eltűnik az értesítés). A <code>help</code> ugyanezeket hozza; a <code>menu</code> csoportosítva küld több gombot (üzenetenként max 3 az ntfy-nál).</p>
+      <p class="note l-en">Status &amp; alert notifications carry <b>action buttons</b> (Status · Top · Disk) — tap one to send that command back (and it clears the notice). <code>help</code> has the same buttons. (ntfy caps each message at 3 buttons.)</p>
+      <p class="note l-hu">A status- és riasztás-értesítéseken <b>akciógombok</b> vannak (Status · Top · Disk) — koppints a parancs visszaküldéséhez (és eltűnik az értesítés). A <code>help</code> ugyanezeket hozza. (Üzenetenként max 3 gomb az ntfy-nál.)</p>
       <p class="note l-en"><b>Several servers, one topic?</b> Every host answers by default; address one by prefixing the <b>hostname</b> (the <code>@</code> is optional) — e.g. <code>pve up</code> or <code>@pi4 status</code>. Send <code>up</code> once to see every name (each reply's title is its hostname).</p>
       <p class="note l-hu"><b>Több szerver, egy topic?</b> Alapból mind válaszol; egyet a <b>hostname</b> előtaggal érsz el (a <code>@</code> opcionális) — pl. <code>pve up</code> vagy <code>@pi4 status</code>. Küldj egy <code>up</code>-ot a nevek megtekintéséhez (minden válasz címe a hostname).</p>
     </div>
