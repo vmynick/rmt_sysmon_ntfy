@@ -73,7 +73,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.7.0"
+VERSION = "1.7.1"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -270,12 +270,12 @@ def check_docker(name):
         out = subprocess.check_output(
             ["docker", "inspect", "-f", "{{.State.Running}}", name],
             stderr=subprocess.DEVNULL, timeout=5).decode().strip()
-        return (f"docker:{name}", "running" if out == "true" else "stopped",
+        return (f"docker · {name}", "running" if out == "true" else "stopped",
                 "ok" if out == "true" else "crit")
     except subprocess.CalledProcessError:
-        return (f"docker:{name}", "absent", "crit")     # no such container
+        return (f"docker · {name}", "absent", "crit")     # no such container
     except Exception:
-        return (f"docker:{name}", t("na"), "ok")          # docker missing/unreachable
+        return (f"docker · {name}", t("na"), "ok")          # docker missing/unreachable
 
 # ----------------------------------------------------------------------------
 # extra task hook
