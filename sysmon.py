@@ -80,7 +80,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.9.1"
+VERSION = "1.9.2"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -543,7 +543,9 @@ def _parse_command(raw):
     '@pve up', 'up pve', 'up@pve' all target pve; no target => every host answers."""
     target, words = None, []
     for w in str(raw).strip().lower().split():
-        if w.startswith("@"):
+        if w == "@":
+            continue                   # stray "@ host" -> next bare word is the target
+        elif w.startswith("@"):
             target = w[1:]
         elif "@" in w:
             c, _, h = w.partition("@"); words.append(c); target = h
