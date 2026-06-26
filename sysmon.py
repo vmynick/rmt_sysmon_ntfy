@@ -61,7 +61,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -104,6 +104,9 @@ T = {
         "na": "n/a", "sent": "sent", "failed": "failed",
         "ver": "{h} sysmon v{v}",
         "up_to_date": "{h} already up to date (v{v}).",
+        "upd_avail_title": "{h} update available",
+        "upd_avail": "New version v{new} available (running v{cur}). "
+                     "Tap 'Update now' or send 'update'.",
         "updating": "{h} updating v{cur} -> v{new}, restarting...",
         "upd_fail": "{h} update failed: {e}",
         "upd_perm": "{h} cannot write {p} (needs root). Re-run install.sh.",
@@ -125,6 +128,9 @@ T = {
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
         "ver": "{h} sysmon v{v}",
         "up_to_date": "{h} mar naprakesz (v{v}).",
+        "upd_avail_title": "{h} frissites elerheto",
+        "upd_avail": "Uj verzio elerheto: v{new} (jelenleg v{cur}). "
+                     "Koppints az 'Update now'-ra, vagy kuldj 'update'-et.",
         "updating": "{h} frissites v{cur} -> v{new}, ujraindul...",
         "upd_fail": "{h} frissites sikertelen: {e}",
         "upd_perm": "{h} nem irhato {p} (root kell). Futtasd ujra az install.sh-t.",
@@ -332,6 +338,27 @@ def _parse_version(text):
             return line.split("=", 1)[1].strip().strip('"\'')
     return None
 
+def _newer(remote, local):
+    """True if remote version string is strictly newer than local."""
+    try:
+        return tuple(int(x) for x in remote.split(".")) \
+             > tuple(int(x) for x in local.split("."))
+    except Exception:
+        return bool(remote) and remote != local
+
+def notify_if_update():
+    """Check the repo for a newer version; if found, push a note + Update button."""
+    try:
+        new_ver = _parse_version(_fetch_remote_script())
+    except Exception as e:
+        print(f"[update-check] {e}", file=sys.stderr)
+        return
+    if new_ver and _newer(new_ver, VERSION):
+        publish(t("upd_avail", h=HOSTNAME, cur=VERSION, new=new_ver),
+                title=t("upd_avail_title", h=HOSTNAME), tags="arrow_up",
+                actions="; ".join([_action("Update now", "update"),
+                                   _view("Docs", DOCS_URL)]))
+
 def do_update():
     """Download the latest script; if newer, overwrite this file and re-exec."""
     try:
@@ -473,6 +500,7 @@ def main():
         publish(f"{t('started', h=HOSTNAME)}\n{msg}",
                 title=t("online", h=HOSTNAME), tags="rocket", severity=sev,
                 actions=status_actions())
+        threading.Thread(target=notify_if_update, daemon=True).start()   # ping if a newer version is out
         if INTERVAL > 0:
             threading.Thread(target=watchdog_loop, daemon=True).start()
         subscribe_loop()

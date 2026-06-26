@@ -100,6 +100,10 @@ The daemon doesn't only answer commands — every `SYSMON_INTERVAL` seconds
 severity level changes**: a `high`/`urgent` alert on degrade, a quiet
 "recovered" when it returns to ok. No spam while everything is fine.
 
+On start (when it subscribes) it also checks the repo for a newer version
+and, if one is out, pushes an **"update available"** notice with an
+**Update now** button (or just send `update`).
+
 ---
 
 ## Extra tasks
