@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 *.swp
 .DS_Store
+
+.vscode
+.claude
+HANDOVER.md
+.gitignore
+.gitattributes
