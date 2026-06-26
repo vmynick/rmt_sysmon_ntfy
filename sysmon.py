@@ -73,7 +73,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.8.0"
+VERSION = "1.8.1"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -320,12 +320,15 @@ def build_status(full=True):
     ]
     sev = sev_max(sm, sd, st)
     if full:
-        extras = extra_tasks()
+        try:
+            extras = extra_tasks()                 # never let an extra check crash status
+        except Exception as e:
+            extras = [("extra_tasks", f"error: {e}", "warn")]
         if extras:
             lines.append(f"\n{t('extra')}")
             for k, v, s in extras:
-                lines.append(f"  {SEV_ICON[s]}  {k}: {v}")
-                sev = sev_max(sev, s)
+                lines.append(f"  {SEV_ICON.get(s, '⚪')}  {k}: {v}")
+                sev = sev_max(sev, s if s in SEV_ORDER else "warn")
     return "\n".join(lines), sev
 
 # ----------------------------------------------------------------------------
@@ -687,7 +690,13 @@ def configure_wizard():
                               "SYSMON_CHECK_DOCKER": ",".join(dkr)})
     subprocess.call(["systemctl", "daemon-reload"])
     subprocess.call(["systemctl", "restart", "sysmon.service"])
-    print("saved + restarted. Send 'status' to verify.")
+    if subprocess.call(["systemctl", "is-active", "--quiet", "sysmon.service"]) == 0:
+        print("saved + restarted. Send 'status' to verify.")
+    else:
+        print("saved, but the service did NOT come up. Recent log:\n")
+        subprocess.call(["journalctl", "-u", "sysmon.service", "-n", "20", "--no-pager"])
+        print("\nFix the issue above, then: systemctl restart sysmon")
+        sys.exit(1)
 
 # ----------------------------------------------------------------------------
 # entry point
