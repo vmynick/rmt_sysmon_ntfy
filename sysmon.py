@@ -73,7 +73,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.6.0"
+VERSION = "1.7.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -92,6 +92,7 @@ TH = {
 }
 PRIO = {"ok": "default", "warn": "high", "crit": "urgent"}
 SEV_ORDER = ("ok", "warn", "crit")
+SEV_ICON = {"ok": "🟢", "warn": "🟡", "crit": "🔴"}   # status dot per metric
 
 # rate limit + dedup
 RATE_MAX, RATE_WINDOW = 8, 60
@@ -299,25 +300,30 @@ def extra_tasks():
 
     return results
 
+def _metric(emoji, label, value, sev):
+    # trailing status dot only when the metric actually has a severity reading
+    dot = "" if value == t("na") else f"  {SEV_ICON[sev]}"
+    return f"{emoji} {label:<5} {value}{dot}"
+
 def build_status(full=True):
     mem, sm = get_mem()
     disk, sd = get_disk()
     temp, st = get_temp()
     lines = [
-        f"{t('host')}: {HOSTNAME} ({get_ip()})",
-        f"{t('up')}:   {get_uptime()}",
-        f"{t('load')}: {get_load()}",
-        f"{t('mem')}:  {mem}",
-        f"{t('disk')}: {disk}",
-        f"{t('temp')}: {temp}",
+        f"🖥️  {HOSTNAME}  ·  {get_ip()}",
+        f"⏱️  {t('up'):<5} {get_uptime()}",
+        f"📈  {t('load'):<5} {get_load()}",
+        _metric("🧠", t("mem"),  mem,  sm),
+        _metric("💾", t("disk"), disk, sd),
+        _metric("🌡️", t("temp"), temp, st),
     ]
     sev = sev_max(sm, sd, st)
     if full:
         extras = extra_tasks()
         if extras:
-            lines.append(f"--- {t('extra')} ---")
+            lines.append(f"\n{t('extra')}")
             for k, v, s in extras:
-                lines.append(f"{k}: {v}")
+                lines.append(f"  {SEV_ICON[s]}  {k}: {v}")
                 sev = sev_max(sev, s)
     return "\n".join(lines), sev
 
