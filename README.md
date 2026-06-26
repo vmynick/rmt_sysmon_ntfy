@@ -80,17 +80,19 @@ one in the ntfy app to send that command back, no typing.
 
 Install sysmon on several machines with the **same topic** and they all listen.
 By default every host answers a command (so `up` is a quick roll-call). To talk
-to just one, prefix the command with `@<host>`:
+to just one, **prefix the command with the hostname** (the `@` is optional):
 
 ```bash
-curl -d "@pi4 status"  https://ntfy.sh/mytopic   # only pi4 replies
-curl -d "status@pi4"   https://ntfy.sh/mytopic   # same, attached form
+curl -d "pve up"       https://ntfy.sh/mytopic   # only pve replies
+curl -d "pi4 status"   https://ntfy.sh/mytopic   # only pi4 replies
+curl -d "@pi4 status"  https://ntfy.sh/mytopic   # same, explicit @ form
 curl -d "status"       https://ntfy.sh/mytopic   # all hosts reply
 ```
 
-`<host>` matches the machine's hostname (full or short). Each reply's title is
-the hostname, so you can tell them apart. (Prefer separate topics if you want
-hard isolation — the topic is still the password.)
+The host matches the machine's hostname (full or short, case-insensitive). Each
+reply's title is the hostname, so you can tell them apart — send `up` once to
+see every name you can use. (Prefer separate topics if you want hard isolation —
+the topic is still the password.)
 
 ---
 

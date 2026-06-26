@@ -29,9 +29,10 @@ Config via environment:
     SYSMON_CHECK_DOCKER    comma-separated docker containers to monitor in `status`
     SYSMON_CHECK_PVE       comma-separated Proxmox VM/CT names or VMIDs to monitor
 
-Address one host when several share a topic: prefix any command with @<host>,
-e.g. "@pi4 status" (no prefix = every host answers). On a Proxmox node the
-report shows the PVE version; pick the HAOS VM via SYSMON_CHECK_PVE.
+Address one host when several share a topic: prefix the command with the
+hostname (the @ is optional), e.g. "pve up" or "@pi4 status" (no prefix =
+every host answers). On a Proxmox node the report shows the PVE version;
+pick the HAOS VM via SYSMON_CHECK_PVE.
 
 Message priority scales with severity (disk/mem/temp thresholds):
     ok -> default | warn -> high | crit -> urgent
@@ -79,7 +80,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.9.0"
+VERSION = "1.9.1"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -537,8 +538,9 @@ def dismiss_update():
 # command handling
 # ----------------------------------------------------------------------------
 def _parse_command(raw):
-    """Split into (command, target_host). Supports '@host cmd', 'cmd @host', 'cmd@host'.
-    target is None when not addressed (then every host on the topic answers)."""
+    """Split into (command, target_host). The command is the recognised word; any
+    other bare word (or an @host token) is a target hostname. So 'pve up',
+    '@pve up', 'up pve', 'up@pve' all target pve; no target => every host answers."""
     target, words = None, []
     for w in str(raw).strip().lower().split():
         if w.startswith("@"):
@@ -547,7 +549,13 @@ def _parse_command(raw):
             c, _, h = w.partition("@"); words.append(c); target = h
         else:
             words.append(w)
-    return (words[0] if words else "", target)
+    cmd = ""
+    for w in words:
+        if w in COMMANDS:
+            cmd = w
+        elif target is None:
+            target = w                 # bare hostname, e.g. "pve up" / "status pi4"
+    return (cmd, target)
 
 def _for_me(target):
     return target in (None, "", "all", HOSTNAME.lower(), HOSTNAME.split(".")[0].lower())
