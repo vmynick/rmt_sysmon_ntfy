@@ -178,6 +178,18 @@ gateway: ok</span><span class="cursor"></span></pre>
   <p class="note l-en">The reply shows up a few seconds later as an ntfy notification on your phone — or on anyone else's phone subscribed to the same topic.</p>
   <p class="note l-hu">A válasz pár másodperc múlva megjelenik a telefonod ntfy értesítésében — vagy bárki más telefonján, aki ugyanarra a topicra feliratkozott.</p>
 
+  <!-- WHAT IS NTFY -->
+  <section>
+    <p class="eyebrow l-en">What is ntfy.sh <span>the transport</span></p>
+    <p class="eyebrow l-hu">Mi az az ntfy.sh <span>a csatorna</span></p>
+    <div class="card">
+      <p class="l-en" style="margin:0;color:var(--ink-dim);font-size:13.5px">
+        <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy.sh</a> is a free, open-source pub/sub notification service. You publish a message to a <b>topic</b> with a plain HTTP <code>POST</code> (e.g. <code>curl</code>), and anyone subscribed to that topic — phone app, browser, or another script — receives it instantly. No account, no API key: the topic name is the only thing you need (and your only secret). sysmon uses it both ways: it <b>pushes</b> status to a topic and <b>subscribes</b> to the same topic to receive commands. You can use the public <code>ntfy.sh</code> server or <a href="https://docs.ntfy.sh/install/" target="_blank" rel="noopener">self-host your own</a>.</p>
+      <p class="l-hu" style="margin:0;color:var(--ink-dim);font-size:13.5px">
+        Az <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy.sh</a> egy ingyenes, nyílt forráskódú pub/sub értesítő szolgáltatás. Egy üzenetet egy <b>topicra</b> küldesz sima HTTP <code>POST</code>-tal (pl. <code>curl</code>), és bárki, aki feliratkozott arra a topicra — telefonos app, böngésző vagy másik szkript — azonnal megkapja. Nincs fiók, nincs API-kulcs: csak a topic neve kell (és ez az egyetlen titkod). A sysmon mindkét irányba használja: <b>push</b>-ol egy topicra, és <b>feliratkozik</b> ugyanarra, hogy parancsokat fogadjon. Használhatod a nyilvános <code>ntfy.sh</code> szervert, vagy <a href="https://docs.ntfy.sh/install/" target="_blank" rel="noopener">üzemeltethetsz sajátot</a>.</p>
+    </div>
+  </section>
+
   <!-- INSTALL -->
   <section>
     <p class="eyebrow l-en">Install <span>one command</span></p>
