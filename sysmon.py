@@ -264,10 +264,20 @@ def check_docker(name):
 # extra task hook
 # ----------------------------------------------------------------------------
 def extra_tasks():
-    """Return list of (label, value, severity) tuples. severity: ok|warn|crit."""
+    """Return list of (label, value, severity) tuples. severity: ok|warn|crit.
+
+    Appended to the `status` report; the worst severity here also bumps the
+    push priority. Uncomment / edit the examples below for your machine.
+    """
     results = []
+
+    # --- check several docker containers are running ---
+    # for name in ("homeassistant", "mosquitto", "node-red"):
+    #     results.append(check_docker(name))   # running=ok, stopped/absent=crit
+
+    # --- check systemd services ---
     # results.append(check_service("nginx"))
-    # results.append(check_docker("homeassistant"))
+
     return results
 
 def build_status(full=True):
