@@ -25,8 +25,9 @@ python3, copies to `/opt/sysmon/`, creates a `systemd` service
 **Re-running on an existing install** detects it and asks whether to
 **update** (keep the current topic / language / server / interval and just
 refresh the script) or do a **clean install** (pick a new topic). Either way
-the service is restarted so the new code loads. `update` over ntfy also
-self-updates the script — the installer is for when you want to re-bootstrap.
+the service is restarted so the new code loads. This is the **only** way to
+update — sysmon never updates itself from an ntfy command (that would let
+anyone with the topic run code on the box).
 
 Fully unattended (e.g. many machines):
 
@@ -60,7 +61,7 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | `temp`   | CPU temperature (Raspberry Pi) |
 | `top`    | top 5 processes by CPU |
 | `version`| running script version |
-| `update` | self-update from the repo, then restart |
+| `checkupdate` | report if a newer version is on GitHub (read-only) |
 | `docs`   | push a message with **Open docs** / **GitHub** buttons |
 | `help`   | command list |
 
@@ -102,9 +103,14 @@ severity level changes**: a `high`/`urgent` alert on degrade, a quiet
 
 It also watches GitHub for new releases: a check on start, then every
 `SYSMON_UPDATE_CHECK` seconds (default 86400 = daily, `0` disables). If a
-newer version is out it pushes an **"update available"** notice with an
-**Update now** button (or just send `update`). Each version is announced
-once, so it won't nag.
+newer version is out it pushes an **"update available"** notice — **tap it**
+to open the docs and see what's new, or use the buttons:
+
+- **Dismiss** — keep your version; no more notices for that release
+- **Remind 6h** / **Remind 2d** — snooze, then notify again later
+
+Ask any time with the **`checkupdate`** command. To actually upgrade, re-run
+the installer one-liner — sysmon never self-updates from a command.
 
 ---
 

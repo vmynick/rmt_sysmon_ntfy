@@ -181,9 +181,8 @@ ok "installed: ${DEST}/sysmon.py"
 
 # --- run user ---
 RUN_USER="${SUDO_USER:-$(id -un)}"
-
-# let the service user own its script dir so the 'update' command can self-overwrite
-$SUDO chown -R "$RUN_USER" "$DEST" 2>/dev/null || true
+# note: $DEST stays root-owned on purpose — the service user cannot overwrite
+# its own code. Updating is done by re-running this installer (update mode).
 
 # allow vcgencmd temperature reads (Raspberry Pi: /dev/vcio is group 'video')
 if getent group video >/dev/null 2>&1; then

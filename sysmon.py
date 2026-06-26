@@ -13,9 +13,10 @@ Commands (always English):
     mem     -> memory usage
     temp    -> CPU temperature (Raspberry Pi)
     top     -> top 5 processes by CPU
-    version -> running script version
-    update  -> self-update from the repo, then restart
-    docs    -> push links with "Open docs" / "GitHub" buttons
+    version     -> running script version
+    checkupdate -> report if a newer version is on GitHub (read-only)
+    docs        -> push links with "Open docs" / "GitHub" buttons
+    (button-only: dismiss, remind6h, remind2d -> manage update notices)
     help    -> command list
 
 Config via environment:
@@ -72,7 +73,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.5.0"
+VERSION = "1.6.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -80,7 +81,8 @@ DOCS_URL = "https://vmynick.github.io/rmt_sysmon_ntfy/"
 REPO_URL = "https://github.com/vmynick/rmt_sysmon_ntfy"
 
 COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help",
-            "version", "update", "docs"}
+            "version", "checkupdate", "docs",
+            "dismiss", "remind6h", "remind2d"}     # update-notice buttons
 
 # severity thresholds (percent for disk/mem, Celsius for temp)
 TH = {
@@ -109,18 +111,18 @@ T = {
         "started": "{h} sysmon started.",
         "online": "{h} online",
         "help": "Commands: status, up, ping, disk, mem, temp, top, "
-                "version, update, docs, help",
+                "version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon docs & links — tap a button below.",
         "na": "n/a", "sent": "sent", "failed": "failed",
         "ver": "{h} sysmon v{v}",
-        "up_to_date": "{h} already up to date (v{v}).",
+        "up_to_date": "{h} up to date (v{v}).",
         "upd_avail_title": "{h} update available",
         "upd_avail": "New version v{new} available (running v{cur}). "
-                     "Tap 'Update now' or send 'update'.",
-        "updating": "{h} updating v{cur} -> v{new}, restarting...",
-        "upd_fail": "{h} update failed: {e}",
-        "upd_perm": "{h} cannot write {p} (needs root). Re-run install.sh.",
+                     "Tap to see what's new; re-run the installer to update.",
+        "upd_fail": "{h} update check failed: {e}",
+        "upd_snoozed": "{h} update reminder snoozed for {t}.",
+        "upd_dismissed": "{h} dismissed update v{v} — no more notices for it.",
         "degraded": "{h} {sev}",
         "recovered": "{h} recovered",
         "err_topic": "ERROR: set SYSMON_TOPIC (env or top of script).",
@@ -133,18 +135,18 @@ T = {
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
         "help": "Parancsok: status, up, ping, disk, mem, temp, top, "
-                "version, update, docs, help",
+                "version, checkupdate, docs, help",
         "top": "Top CPU ({h})",
         "docs": "sysmon dokumentacio es linkek — koppints egy gombra lent.",
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
         "ver": "{h} sysmon v{v}",
-        "up_to_date": "{h} mar naprakesz (v{v}).",
+        "up_to_date": "{h} naprakesz (v{v}).",
         "upd_avail_title": "{h} frissites elerheto",
         "upd_avail": "Uj verzio elerheto: v{new} (jelenleg v{cur}). "
-                     "Koppints az 'Update now'-ra, vagy kuldj 'update'-et.",
-        "updating": "{h} frissites v{cur} -> v{new}, ujraindul...",
-        "upd_fail": "{h} frissites sikertelen: {e}",
-        "upd_perm": "{h} nem irhato {p} (root kell). Futtasd ujra az install.sh-t.",
+                     "Koppints az ujdonsagokert; frissiteshez futtasd ujra a telepitot.",
+        "upd_fail": "{h} frissites-ellenorzes sikertelen: {e}",
+        "upd_snoozed": "{h} frissites-emlekezteto elhalasztva: {t}.",
+        "upd_dismissed": "{h} v{v} frissites elvetve — nincs tobb ertesites rola.",
         "degraded": "{h} {sev}",
         "recovered": "{h} helyreallt",
         "err_topic": "HIBA: allitsd be a SYSMON_TOPIC-ot (env vagy a script teteje).",
@@ -322,7 +324,7 @@ def build_status(full=True):
 # ----------------------------------------------------------------------------
 # ntfy publish
 # ----------------------------------------------------------------------------
-def publish(message, title=None, tags=None, severity="ok", actions=None):
+def publish(message, title=None, tags=None, severity="ok", actions=None, click=None):
     now = time.time()
     global _sent_times
     with _send_lock:
@@ -344,6 +346,8 @@ def publish(message, title=None, tags=None, severity="ok", actions=None):
         req.add_header("Title", title)
     if actions:
         req.add_header("Actions", actions)
+    if click:
+        req.add_header("Click", click)
     try:
         with urllib.request.urlopen(req, timeout=10) as r:
             return r.status == 200
@@ -352,7 +356,7 @@ def publish(message, title=None, tags=None, severity="ok", actions=None):
         return False
 
 # ----------------------------------------------------------------------------
-# self-update  (fetch latest sysmon.py, replace this file, re-exec)
+# update check  (report only — never modifies anything; update via the installer)
 # ----------------------------------------------------------------------------
 def _fetch_remote_script():
     req = urllib.request.Request(UPDATE_URL)
@@ -373,55 +377,97 @@ def _newer(remote, local):
     except Exception:
         return bool(remote) and remote != local
 
-_notified_ver = None      # remember the version we last announced (avoid repeat pings)
+# update-notification state (shared between the listener and update threads)
+_avail_ver     = None                # newest version on GitHub that is > VERSION
+_dismissed_ver = None                # version the user chose to keep -> no more notices
+_snooze_until  = 0.0                 # suppress update notices until this timestamp
+_update_wake   = threading.Event()   # poke update_loop to recompute its timing
 
-def notify_if_update():
-    """Check the repo for a newer version; if found, push a note + Update button.
-    Pings once per discovered version, so periodic checks don't spam."""
-    global _notified_ver
+def _update_actions():
+    # up to 3 ntfy buttons; tapping POSTs the command back to the topic
+    return "; ".join([_action("Dismiss", "dismiss"),
+                      _action("Remind 6h", "remind6h"),
+                      _action("Remind 2d", "remind2d")])
+
+def _announce_update(new_ver):
+    # Click opens the docs/feature page; buttons let the user dismiss or snooze
+    publish(t("upd_avail", h=HOSTNAME, cur=VERSION, new=new_ver),
+            title=t("upd_avail_title", h=HOSTNAME), tags="arrow_up",
+            click=DOCS_URL, actions=_update_actions())
+
+def _fetch_avail():
+    """Fetch the repo VERSION; cache in _avail_ver if newer than ours. None on miss/err."""
+    global _avail_ver
     try:
-        new_ver = _parse_version(_fetch_remote_script())
+        rv = _parse_version(_fetch_remote_script())
     except Exception as e:
         print(f"[update-check] {e}", file=sys.stderr)
-        return
-    if new_ver and _newer(new_ver, VERSION) and new_ver != _notified_ver:
-        _notified_ver = new_ver
-        publish(t("upd_avail", h=HOSTNAME, cur=VERSION, new=new_ver),
-                title=t("upd_avail_title", h=HOSTNAME), tags="arrow_up",
-                actions="; ".join([_action("Update now", "update"),
-                                   _view("Docs", DOCS_URL)]))
+        return None
+    _avail_ver = rv if (rv and _newer(rv, VERSION)) else None
+    return _avail_ver
+
+def _may_notify(now):
+    return bool(_avail_ver) and _avail_ver != _dismissed_ver and now >= _snooze_until
+
+def notify_if_update():
+    """Startup check: announce a newer version unless dismissed or snoozed."""
+    _fetch_avail()
+    if _may_notify(time.time()):
+        _announce_update(_avail_ver)
 
 def update_loop():
-    """Periodically re-check GitHub for a newer version (independent of watchdog)."""
+    """Re-check GitHub on a cadence; also fire a reminder when a snooze expires."""
     print(f"[sysmon] version-check: every {UPDATE_CHECK}s")
+    last_fetch = time.time()                     # startup already fetched
     while True:
-        time.sleep(UPDATE_CHECK)
-        notify_if_update()
+        now = time.time()
+        next_fetch = last_fetch + UPDATE_CHECK
+        wake_at = next_fetch
+        if _avail_ver and _avail_ver != _dismissed_ver and _snooze_until > now:
+            wake_at = min(wake_at, _snooze_until)     # wake to remind
+        if _update_wake.wait(timeout=max(1, wake_at - now)):
+            _update_wake.clear()                      # state changed -> recompute
+            continue
+        now = time.time()
+        if now >= next_fetch:
+            _fetch_avail()
+            last_fetch = now
+        if _may_notify(now):
+            _announce_update(_avail_ver)
 
-def do_update():
-    """Download the latest script; if newer, overwrite this file and re-exec."""
+def check_update_cmd():
+    """`checkupdate`: report whether a newer version is out. Read-only — never
+    downloads or runs anything. Update by re-running the installer."""
+    global _avail_ver
     try:
-        remote = _fetch_remote_script()
+        rv = _parse_version(_fetch_remote_script())
     except Exception as e:
         publish(t("upd_fail", h=HOSTNAME, e=e), tags="x")
         return
-    new_ver = _parse_version(remote) or "?"
-    if new_ver == VERSION:
+    _avail_ver = rv if (rv and _newer(rv, VERSION)) else None
+    if _avail_ver and _avail_ver != _dismissed_ver:
+        _announce_update(_avail_ver)
+    elif _avail_ver:                              # newer, but the user dismissed it
+        publish(t("upd_dismissed", h=HOSTNAME, v=_avail_ver), tags="mute")
+    else:
         publish(t("up_to_date", h=HOSTNAME, v=VERSION), tags="white_check_mark")
-        return
-    path = os.path.abspath(__file__)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(remote)
-    except PermissionError:
-        publish(t("upd_perm", h=HOSTNAME, p=path), tags="lock")
-        return
-    except Exception as e:
-        publish(t("upd_fail", h=HOSTNAME, e=e), tags="x")
-        return
-    publish(t("updating", h=HOSTNAME, cur=VERSION, new=new_ver),
-            title=f"{HOSTNAME} update", tags="arrows_counterclockwise")
-    os.execv(sys.executable, [sys.executable, path] + sys.argv[1:])   # restart with new code
+
+def snooze_update(seconds, label):
+    """`remind*`: suppress update notices for a while, then re-announce."""
+    global _snooze_until
+    _snooze_until = time.time() + seconds
+    _update_wake.set()
+    publish(t("upd_snoozed", h=HOSTNAME, t=label), tags="alarm_clock")
+
+def dismiss_update():
+    """`dismiss`: keep the current version; stop notices about the available one."""
+    global _dismissed_ver
+    if _avail_ver:
+        _dismissed_ver = _avail_ver
+        _update_wake.set()
+        publish(t("upd_dismissed", h=HOSTNAME, v=_avail_ver), tags="mute")
+    else:
+        publish(t("up_to_date", h=HOSTNAME, v=VERSION), tags="white_check_mark")
 
 # ----------------------------------------------------------------------------
 # command handling
@@ -457,8 +503,14 @@ def handle_command(cmd):
         publish(f"{t('top', h=HOSTNAME)}:\n{get_top()}", tags="fire")
     elif cmd == "version":
         publish(t("ver", h=HOSTNAME, v=VERSION), tags="label")
-    elif cmd == "update":
-        do_update()
+    elif cmd == "checkupdate":
+        check_update_cmd()
+    elif cmd == "dismiss":
+        dismiss_update()
+    elif cmd == "remind6h":
+        snooze_update(6 * 3600, "6h")
+    elif cmd == "remind2d":
+        snooze_update(2 * 86400, "2 days")
     elif cmd == "docs":
         publish(t("docs"), title="sysmon docs", tags="books",
                 actions="; ".join([_view("Open docs", DOCS_URL),
