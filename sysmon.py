@@ -13,6 +13,9 @@ Commands (always English):
     mem     -> memory usage
     temp    -> CPU temperature (Raspberry Pi)
     top     -> top 5 processes by CPU
+    version -> running script version
+    update  -> self-update from the repo, then restart
+    docs    -> push links with "Open docs" / "GitHub" buttons
     help    -> command list
 
 Config via environment:
@@ -58,13 +61,15 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
+DOCS_URL = "https://vmynick.github.io/rmt_sysmon_ntfy/"
+REPO_URL = "https://github.com/vmynick/rmt_sysmon_ntfy"
 
 COMMANDS = {"status", "up", "ping", "disk", "mem", "temp", "top", "help",
-            "version", "update"}
+            "version", "update", "docs"}
 
 # severity thresholds (percent for disk/mem, Celsius for temp)
 TH = {
@@ -93,8 +98,9 @@ T = {
         "started": "{h} sysmon started.",
         "online": "{h} online",
         "help": "Commands: status, up, ping, disk, mem, temp, top, "
-                "version, update, help",
+                "version, update, docs, help",
         "top": "Top CPU ({h})",
+        "docs": "sysmon docs & links — tap a button below.",
         "na": "n/a", "sent": "sent", "failed": "failed",
         "ver": "{h} sysmon v{v}",
         "up_to_date": "{h} already up to date (v{v}).",
@@ -113,8 +119,9 @@ T = {
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
         "help": "Parancsok: status, up, ping, disk, mem, temp, top, "
-                "version, update, help",
+                "version, update, docs, help",
         "top": "Top CPU ({h})",
+        "docs": "sysmon dokumentacio es linkek — koppints egy gombra lent.",
         "na": "n/a", "sent": "elkuldve", "failed": "sikertelen",
         "ver": "{h} sysmon v{v}",
         "up_to_date": "{h} mar naprakesz (v{v}).",
@@ -138,6 +145,9 @@ def sev_max(*sevs):
 # ----------------------------------------------------------------------------
 def _action(label, command):
     return f"http, {label}, {PUB_URL}, method=POST, body={command}, clear=true"
+
+def _view(label, url):
+    return f"view, {label}, {url}"
 
 def status_actions():
     # ntfy allows up to 3 action buttons per message
@@ -383,6 +393,10 @@ def handle_command(cmd):
         publish(t("ver", h=HOSTNAME, v=VERSION), tags="label")
     elif cmd == "update":
         do_update()
+    elif cmd == "docs":
+        publish(t("docs"), title="sysmon docs", tags="books",
+                actions="; ".join([_view("Open docs", DOCS_URL),
+                                    _view("GitHub", REPO_URL)]))
     elif cmd == "help":
         publish(t("help"), title="sysmon help", tags="information_source")
 

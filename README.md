@@ -53,6 +53,7 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | `top`    | top 5 processes by CPU |
 | `version`| running script version |
 | `update` | self-update from the repo, then restart |
+| `docs`   | push a message with **Open docs** / **GitHub** buttons |
 | `help`   | command list |
 
 Commands are **always English**. Unknown command → silently dropped (allowlist).
