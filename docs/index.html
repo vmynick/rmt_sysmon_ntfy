@@ -275,6 +275,27 @@ gateway: ok</span><span class="cursor"></span></pre>
     </div>
   </section>
 
+  <!-- ACTION BUTTONS -->
+  <section>
+    <p class="eyebrow l-en">Action buttons <span>tap, don't type</span></p>
+    <p class="eyebrow l-hu">Akciógombok <span>koppints, ne gépelj</span></p>
+    <div class="card">
+      <p class="l-en" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
+        ntfy notifications can carry up to <b>3 buttons</b>, set with the <code>Actions</code> header. Three types: <code>view</code> (open a URL), <code>http</code> (fire a background request), <code>broadcast</code> (Android intent). sysmon attaches <code>http</code> buttons that <b>POST a command back to your topic</b> — so tapping <b>Top</b> just sends <code>top</code> and you get a fresh reply, no typing. <code>clear=true</code> dismisses the notification after the tap.</p>
+      <p class="l-hu" style="margin:0 0 12px;color:var(--ink-dim);font-size:13.5px">
+        Az ntfy értesítések max <b>3 gombot</b> hordozhatnak, az <code>Actions</code> headerrel beállítva. Három típus: <code>view</code> (URL megnyitása), <code>http</code> (háttér-kérés), <code>broadcast</code> (Android intent). A sysmon <code>http</code> gombokat tesz fel, amik <b>egy parancsot POST-olnak vissza a topicodra</b> — a <b>Top</b> gomb elküldi a <code>top</code>-ot, és kapsz friss választ, gépelés nélkül. A <code>clear=true</code> a koppintás után eltünteti az értesítést.</p>
+      <div class="cmd"><span class="c"><span class="l-en"># view button — open a page</span><span class="l-hu"># view gomb — oldal megnyitása</span></span>
+curl -H <span class="v">"Actions: view, Open docs, https://vmynick.github.io/rmt_sysmon_ntfy/"</span> \
+  -d "deployed" ntfy.sh/<span class="v">mytopic</span>
+
+<span class="c"><span class="l-en"># http button — send a command back (what sysmon does)</span><span class="l-hu"># http gomb — parancs visszaküldése (ezt csinálja a sysmon)</span></span>
+curl -H <span class="v">"Actions: http, Top, https://ntfy.sh/mytopic, method=POST, body=top, clear=true"</span> \
+  -d "pi4 status" ntfy.sh/<span class="v">mytopic</span></div>
+      <p class="note l-en">Max 3 buttons · header must be one line · quote labels/values that contain a comma. The JSON publish form (<code>actions: [ … ]</code>) avoids the escaping. See the <a href="https://docs.ntfy.sh/publish/#action-buttons" target="_blank" rel="noopener">ntfy action-buttons docs</a>.</p>
+      <p class="note l-hu">Max 3 gomb · a header egy sor legyen · idézőjelezd a vesszőt tartalmazó címkét/értéket. A JSON-os küldés (<code>actions: [ … ]</code>) megspórolja az escapelést. Lásd az <a href="https://docs.ntfy.sh/publish/#action-buttons" target="_blank" rel="noopener">ntfy akciógomb-dokumentációt</a>.</p>
+    </div>
+  </section>
+
   <!-- EXTRA TASKS -->
   <section>
     <p class="eyebrow l-en">Extra tasks <span>your own checks</span></p>
