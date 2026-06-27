@@ -94,7 +94,7 @@ SELF_TAG = f"sysmon-{HOSTNAME}"          # loop-prevention: recognise own pushes
 PUB_URL = f"{SERVER}/{TOPIC}"
 SUB_URL = f"{SERVER}/{TOPIC}/json"
 
-VERSION = "1.11.1"
+VERSION = "1.11.2"
 UPDATE_URL = os.environ.get(
     "SYSMON_UPDATE_URL",
     "https://raw.githubusercontent.com/vmynick/rmt_sysmon_ntfy/main/sysmon.py")
@@ -130,7 +130,7 @@ T = {
     "en": {
         "host": "Host", "up": "Up", "load": "Load", "mem": "Mem",
         "disk": "Disk", "temp": "Temp", "extra": "extra",
-        "alive": "{h} is alive. Uptime: {u}",
+        "alive": "{h} is alive · {ip} · uptime {u}  (address me as @{h})",
         "started": "{h} sysmon started.",
         "online": "{h} online",
         "help": "Commands: status, up, ping, disk, mem, temp, top, net, "
@@ -154,7 +154,7 @@ T = {
     "hu": {
         "host": "Gep", "up": "Fut", "load": "Terheles", "mem": "Memoria",
         "disk": "Lemez", "temp": "Hom.", "extra": "extra",
-        "alive": "{h} elek. Uzemido: {u}",
+        "alive": "{h} elek · {ip} · uzemido {u}  (szolits @{h} nevvel)",
         "started": "{h} sysmon elindult.",
         "online": "{h} online",
         "help": "Parancsok: status, up, ping, disk, mem, temp, top, net, "
@@ -616,7 +616,7 @@ def handle_command(raw):
         publish(msg, title=f"{HOSTNAME} status", tags="bar_chart",
                 severity=sev, actions=status_actions())
     elif cmd == "up":
-        publish(t("alive", h=HOSTNAME, u=get_uptime()),
+        publish(t("alive", h=HOSTNAME, ip=get_ip(), u=get_uptime()),
                 title=f"{HOSTNAME} up", tags="white_check_mark")
     elif cmd == "ping":
         publish(f"pong from {HOSTNAME}", tags="ping_pong")

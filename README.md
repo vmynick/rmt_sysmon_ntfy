@@ -58,7 +58,7 @@ curl -d status https://ntfy.sh/sysmon-aa0ca9c635659f04
 | Command  | Returns |
 |----------|---------|
 | `status` | full report: host, uptime, load, mem, disk, temp + extra tasks |
-| `up`     | short "alive" + uptime |
+| `up`     | alive · ip · uptime, and the name to address it by (`@name`) |
 | `ping`   | `pong` |
 | `disk`   | disk usage |
 | `mem`    | memory usage |

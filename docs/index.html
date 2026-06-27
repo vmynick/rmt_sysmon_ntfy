@@ -149,7 +149,7 @@
   <p class="tagline l-en">One Python script. ntfy.sh push + command-response. Shareable one-liner commands. One-command install.</p>
   <p class="tagline l-hu">Egy Python script. ntfy.sh push + parancs-válasz. Megosztható egysoros parancsokkal. Egyparancsos telepítés.</p>
   <div>
-    <span class="pill" id="version">v1.11.1</span>
+    <span class="pill" id="version">v1.11.2</span>
     <span class="pill"><span class="l-en">stdlib only</span><span class="l-hu">csak stdlib</span></span>
     <span class="pill">systemd</span>
     <span class="pill"><span class="l-en">EN / HU replies</span><span class="l-hu">EN / HU válasz</span></span>
@@ -243,7 +243,7 @@ extra
       <table>
         <tr><th><span class="l-en">Command</span><span class="l-hu">Parancs</span></th><th><span class="l-en">Returns</span><span class="l-hu">Mit ad vissza</span></th></tr>
         <tr><td class="k">status</td><td><span class="l-en">full report: host, uptime, load, mem, disk, temp + extra tasks</span><span class="l-hu">teljes riport: host, uptime, load, mem, disk, temp + extra taskok</span></td></tr>
-        <tr><td class="k">up</td><td><span class="l-en">short "alive" + uptime</span><span class="l-hu">rövid „élek" + uptime</span></td></tr>
+        <tr><td class="k">up</td><td><span class="l-en">alive · ip · uptime + the name to address it by (<code>@name</code>)</span><span class="l-hu">élek · ip · uptime + a név, amivel megszólítható (<code>@név</code>)</span></td></tr>
         <tr><td class="k">ping</td><td><code>pong</code></td></tr>
         <tr><td class="k">disk</td><td><span class="l-en">disk usage</span><span class="l-hu">lemez-használat</span></td></tr>
         <tr><td class="k">mem</td><td><span class="l-en">memory usage</span><span class="l-hu">memória-használat</span></td></tr>
@@ -272,7 +272,7 @@ extra
     <div class="card">
       <div class="chat">
         <div class="bubble out"><div class="who"><span class="l-en">you → topic</span><span class="l-hu">te → topic</span></div>up</div>
-        <div class="bubble in"><div class="who">pi4 up</div><span class="l-en">pi4 is alive. Uptime: 12d 7h 41m</span><span class="l-hu">pi4 elek. Uptime: 12d 7h 41m</span></div>
+        <div class="bubble in"><div class="who">pi4 up</div><span class="l-en">pi4 is alive · 192.168.0.235 · uptime 12d 7h 41m  (address me as @pi4)</span><span class="l-hu">pi4 elek · 192.168.0.235 · uzemido 12d 7h 41m  (szolits @pi4 nevvel)</span></div>
         <div class="bubble out"><div class="who"><span class="l-en">you → topic</span><span class="l-hu">te → topic</span></div>temp</div>
         <div class="bubble in"><div class="who">pi4 temp</div>pi4 temp: 47.2'C</div>
         <div class="bubble out"><div class="who"><span class="l-en">you → topic</span><span class="l-hu">te → topic</span></div>top</div>
